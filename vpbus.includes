@@ -1,0 +1,4 @@
+.
+/home/dev/buildroot-labs/buildroot/output/host/opt/ext-toolchain/include
+/home/dev/buildroot-labs/buildroot/output/host/opt/ext-toolchain/arm-linux-gnueabihf/include/c++/5.3.1
+/home/dev/buildroot-labs/buildroot/output/host/opt/ext-toolchain/arm-linux-gnueabihf/libc/usr/include

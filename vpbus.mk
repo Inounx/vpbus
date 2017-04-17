@@ -1,18 +1,18 @@
-FPGA_VERSION = 1.0
-FPGA_SITE = $(TOPDIR)/package/fpga
-FPGA_SITE_METHOD = local
-FPGA_LICENSE = GPLv3+
+VPBUS_VERSION = 0.1
+VPBUS_SITE = https://github.com/Inounx/vpbus-buildroot.git
+VPBUS_SITE_METHOD = git
+#VPBUS_SITE = $(TOPDIR)/package/vpbus
+#VPBUS_SITE_METHOD = local
+VPBUS_LICENSE = GPLv3+
 
-FPGA_DEPENDENCIES = linux
+VPBUS_DEPENDENCIES = linux
 
-define FPGA_BUILD_CMDS
+define VPBUS_BUILD_CMDS
 	$(MAKE) -C $(LINUX_DIR) $(LINUX_MAKE_FLAGS) M=$(@D)
 endef
 
-define FPGA_INSTALL_TARGET_CMDS
+define VPBUS_INSTALL_TARGET_CMDS
 	$(MAKE) -C $(LINUX_DIR) $(LINUX_MAKE_FLAGS) M=$(@D) modules_install
 endef
-
-
 
 $(eval $(generic-package))
