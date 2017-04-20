@@ -5,6 +5,7 @@
  */
 
 #include "vpbus.h"
+#include <stdint.h>
 #include "am335x_gpio.h"
 #include "am335x_control.h"
 #include <asm/io.h>
@@ -296,25 +297,46 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
     //Les premiers et dernier octets peuvent être des accès non alignés
     //Dans ce cas on ajoute un octet à 0 pour le rendre aligné
     //ce cas ne devrait pas arriver normalement
-    //mais il faut le gérer au cas ou
+    //mais il faut le gérer au cas où
 
+    uint8_t * dataToWrite = kmalloc(size, GFP_KERNEL);
+    copy_from_user(dataToWrite, data, size);
 
-    //Dans un premiers temps on dégage l'octet qui n'est pas aligné pour plus de simplicité
+    uint16_t sizeWritten = 0;
+    uint16_t currentWriteIndex = 0;
+    uint16_t tempWrite = 0;
 
-	char *plop = kmalloc(size + 1, GFP_KERNEL);
-	copy_from_user(plop, data, size);
-	plop[size] = 0;
-	printk(KERN_INFO"J'ai reçu ceci: %x\n", plop);
-	
-	int i = 0;
-	for(i=0; i<size; i++)
-	{
-		ledState = !ledState;
-		gpio_set_value(gpioLED, ledState);
-	}
+    //Premier accès non aligné
+    if(vpbus.currentAddress & 0x01)
+    {
+        tempWrite = (uint16_t)dataToWrite[currentWriteIndex] << 8
+        write_bus(vpbus.currentAddress - 1, tempWrite);
+        sizeWritten += 2;
+        currentWriteIndex++;
+        vpbus.currentAddress++;
+    }
 
-	kfree(plop);
-	return size;
+    while(currentWriteIndex < size-1)
+    {
+        tempWrite = dataToWrite[currentWriteIndex] | ((uint16_t)dataToWrite[currentWriteIndex+1] << 8);
+        write_bus(vpbus.currentAddress, tempWrite);
+        sizeWritten += 2;
+        vpbus.currentAddress += 2;
+        currentWriteIndex += 2;
+    }
+
+    //dernier accès eventuellement non aligné
+    if(currentWriteIndex+1 < size)
+    {
+        tempWrite = dataToWrite[currentWriteIndex];
+        write_bus(vpbus.currentAddress, tempWrite);
+        sizeWritten += 2;
+        vpbus.currentAddress += 2;
+        currentWriteIndex += 2;
+    }
+
+    kfree(dataToWrite);
+    return sizeWritten;
 }
 
 //----------------------------------------------------------------------
@@ -364,7 +386,7 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
  */
 static void init_bus()
 {
-    uint32_t gpio_oe = 0;
+    uint32_t gpio_oe = 0, gpio_output = 0;
     uint32_t pad_config = PAD_CONTROL_MUX_MODE_7 |
                           PAD_CONTROL_PULL_DISABLE |
                           PAD_CONTROL_RX_ACTIVE |
@@ -399,15 +421,22 @@ static void init_bus()
     iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AXR1);
     iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AHCLKX);
 
-
     //Init read et write
-    //Faut il une section critique ou autre chose du même genre ?
-    gpio_oe = ioread32(gpio0 + GPIO_OE);
-    //TODO
-    iowrite32
-
     //Init bus d'adresse
 
+    //on calcule les pattes à mettre en sortie pour chaque port
+    gpio_output = (1uL << 7); //Read P0.7
+    gpio_output |= (1uL << 20); //Write P0.20
+    gpio_output |= (0xFuL << 2); //A(0-3) sur P0.2 à P0.5
+    gpio_output |= (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
+
+    //Faut il une section critique ou autre chose du même genre ?
+    //ATTENTION dans registre OE, bit à 1 = pin en entrée
+    gpio_oe = ioread32(gpio0 + GPIO_OE);
+    gpio_oe &= ~gpio_output;
+    iowrite32(gpio_oe, gpio0 + GPIO_OE);
+
+    //Init variables internes
     vpbus.currentAddress = 0;
     set_bus_address(vpbus.currentAddress);
 
@@ -428,14 +457,39 @@ static void deinit_bus()
  */
 static void set_bus_directivity(BusDirectivity dir)
 {
+    uint32_t gpio1_pins, gpio3_pins
+    uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
         vpbus.directivity = dir;
 
+        //Selection des bits à commuter dans les registres OE
+        gpio1_pins = (0xFFuL << 12); //D0 à D7 sur P1.12 à P1.19
+        gpio3_pins = (0xFFuL << 14); //D8 à D15 sur P1.14 à P1.21
 
-        //TODO
+        //Faut il une section critique ou autre chose du même genre ?
+        //ATTENTION dans registre OE, bit à 1 = pin en entrée
+        gpio_oe = ioread32(gpio1 + GPIO_OE);
+        if(dir == BusRead)
+        {
+           gpio_oe |= gpio1_pins;
+        }
+        else
+        {
+            gpio_oe &= ~gpio1_pins;
+        }
+        iowrite32(gpio_oe, gpio1 + GPIO_OE);
 
-
+        gpio_oe = ioread32(gpio3 + GPIO_OE);
+        if(dir == BusRead)
+        {
+           gpio_oe |= gpio3_pins;
+        }
+        else
+        {
+            gpio_oe &= ~gpio3_pins;
+        }
+        iowrite32(gpio_oe, gpio3 + GPIO_OE);
     }
 }
 
