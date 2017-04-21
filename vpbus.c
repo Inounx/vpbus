@@ -126,11 +126,11 @@ volatile void * gpio2;
 volatile void * gpio3;
 volatile void * control;
 
-static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << 2) | //A(0-3) sur P0.2 à P0.5
-                                                (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
+static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
+                                                (0xFuL << A4_PIN_INDEX); //A(4-7) sur P0.12 à P0.15
 
-static const uint32_t GPIO0_PIN_MASK = (1uL << 7)   | //Read P0.7
-                                       (1uL << 20)  | //Write P0.20
+static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.7
+                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.20
                                        GPIO0_ADDRESS_PIN_MASK;
 
 struct
@@ -433,6 +433,10 @@ static void init_bus()
 
     //Faut il une section critique ou autre chose du même genre ?
     //ATTENTION dans registre OE, bit à 1 = pin en entrée
+
+    //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
+    iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio0 + GPIO_SETDATAOUT);
+
     gpio_oe = ioread32(gpio0 + GPIO_OE);
     gpio_oe &= ~GPIO0_PIN_MASK;
     iowrite32(gpio_oe, gpio0 + GPIO_OE);
@@ -470,8 +474,8 @@ static void set_bus_directivity(BusDirectivity dir)
         vpbus.directivity = dir;
 
         //Selection des bits à commuter dans les registres OE
-        gpio1_pins = (0xFFuL << 12); //D0 à D7 sur P1.12 à P1.19
-        gpio3_pins = (0xFFuL << 14); //D8 à D15 sur P1.14 à P1.21
+        gpio1_pins = (0xFFuL << D0_PIN_INDEX); //D0 à D7 sur P1.12 à P1.19
+        gpio3_pins = (0xFFuL << D8_PIN_INDEX); //D8 à D15 sur P1.14 à P1.21
 
         //Faut il une section critique ou autre chose du même genre ?
         //ATTENTION dans registre OE, bit à 1 = pin en entrée
@@ -520,7 +524,23 @@ static void set_bus_address(uint16_t address)
  */
 static uint16_t read_bus(uint16_t address)
 {
-    //TODO
+    uint32_t gpio_in;
+    uint16_t dataRead;
+    set_bus_directivity(BusRead);
+
+    //Activation du read
+    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+
+    //Besoin d'ajouter une attente?
+    gpio_in = ioread32(gpio1 + GPIO_DATAIN);
+    dataRead = (gpio_in >> D0_PIN_INDEX) & 0xFF;
+    gpio_in = ioread32(gpio3 + GPIO_DATAIN);
+    dataRead |= (gpio_in >> D8_PIN_INDEX - 8) & 0xFF00;
+
+    //Désactivation du read
+    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+
+    return dataRead;
 }
 
 //----------------------------------------------------------------------
