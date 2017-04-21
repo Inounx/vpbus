@@ -81,6 +81,7 @@
 #define D5_PIN_INDEX 17
 #define D6_PIN_INDEX 18
 #define D7_PIN_INDEX 19
+#define GPIO1_DATA_PIN_MASK (0xFFuL << D0_PIN_INDEX)
 
 #define D8_PIN_INDEX 14
 #define D9_PIN_INDEX 15
@@ -90,6 +91,7 @@
 #define D13_PIN_INDEX 19
 #define D14_PIN_INDEX 20
 #define D15_PIN_INDEX 21
+#define GPIO3_DATA_PIN_MASK (0xFFuL << D8_PIN_INDEX)
 
 
 #endif //VPBUS_H

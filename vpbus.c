@@ -508,12 +508,15 @@ static void set_bus_directivity(BusDirectivity dir)
  */
 static void set_bus_address(uint16_t address)
 {
+    uint32_t gpio0_set;
+    uint32_t gpio0_clr;
+
     //on supprime le dernier bit pour passer de l'adressage en octets
     //à l'adressage par mot de 16bits
     address = address >> 1;
 
-    uint32_t gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4))
-    uint32_t gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
+    gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4))
+    gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
 
     iowrite32(gpio0_set, gpio0 + GPIO_SETDATAOUT);
     iowrite32(gpio0_clr, gpio0 + GPIO_CLEARDATAOUT);
@@ -548,7 +551,31 @@ static uint16_t read_bus(uint16_t address)
  */
 static void write_bus(uint16_t address, uint16_t data)
 {
-    //TODO
+    uint32_t gpio_out;
+    uint32_t gpio_set;
+    uint32_t gpio_clr;
+
+    set_bus_directivity(BusWrite);
+
+    //poids faible
+    gpio_set = ((uint32_t)(data & 0xFF) << D0_PIN_INDEX);
+    gpio_clr = (~gpio_set & GPIO1_DATA_PIN_MASK);
+    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
+    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+
+    //poids fort
+    gpio_set = ((uint32_t)(data & 0xFF00) << D8_PIN_INDEX - 8);
+    gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
+    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
+    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+
+    //Activation du write
+    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+
+    //Désactivation du write
+    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+
+    return dataRead;
 }
 
 
