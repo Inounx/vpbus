@@ -43,9 +43,19 @@
 //A5 P0.13
 //A6 P0.14
 //A7 P0.15
+#define A0_PIN_INDEX 2
+#define A1_PIN_INDEX 3
+#define A2_PIN_INDEX 4
+#define A3_PIN_INDEX 5
+#define A4_PIN_INDEX 12
+#define A5_PIN_INDEX 13
+#define A6_PIN_INDEX 14
+#define A7_PIN_INDEX 15
 
 //Read P0.7
 //Write P0.20
+#define READ_PIN_INDEX 7
+#define WRITE_PIN_INDEX 20
 
 //D0 P1.12
 //D1 P1.13
@@ -63,5 +73,23 @@
 //D13 P3.19
 //D14 P3.20
 //D15 P3.21
+#define D0_PIN_INDEX 12
+#define D1_PIN_INDEX 13
+#define D2_PIN_INDEX 14
+#define D3_PIN_INDEX 15
+#define D4_PIN_INDEX 16
+#define D5_PIN_INDEX 17
+#define D6_PIN_INDEX 18
+#define D7_PIN_INDEX 19
+
+#define D8_PIN_INDEX 14
+#define D9_PIN_INDEX 15
+#define D10_PIN_INDEX 16
+#define D11_PIN_INDEX 17
+#define D12_PIN_INDEX 18
+#define D13_PIN_INDEX 19
+#define D14_PIN_INDEX 20
+#define D15_PIN_INDEX 21
+
 
 #endif //VPBUS_H
