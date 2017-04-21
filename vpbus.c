@@ -126,6 +126,11 @@ volatile void * gpio2;
 volatile void * gpio3;
 volatile void * control;
 
+static const uint32_t GPIO0_PIN_MASK = (1uL << 7)   | //Read P0.7
+                                       (1uL << 20)  | //Write P0.20
+                                       (0xFuL << 2) | //A(0-3) sur P0.2 à P0.5
+                                       (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
+
 struct
 {
     uint16_t currentAddress;
@@ -424,16 +429,10 @@ static void init_bus()
     //Init read et write
     //Init bus d'adresse
 
-    //on calcule les pattes à mettre en sortie pour chaque port
-    gpio_output = (1uL << 7); //Read P0.7
-    gpio_output |= (1uL << 20); //Write P0.20
-    gpio_output |= (0xFuL << 2); //A(0-3) sur P0.2 à P0.5
-    gpio_output |= (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
-
     //Faut il une section critique ou autre chose du même genre ?
     //ATTENTION dans registre OE, bit à 1 = pin en entrée
     gpio_oe = ioread32(gpio0 + GPIO_OE);
-    gpio_oe &= ~gpio_output;
+    gpio_oe &= ~GPIO0_PIN_MASK;
     iowrite32(gpio_oe, gpio0 + GPIO_OE);
 
     //Init variables internes
@@ -449,7 +448,12 @@ static void init_bus()
  */
 static void deinit_bus()
 {
+    gpio_oe = ioread32(gpio0 + GPIO_OE);
+    gpio_oe |= GPIO0_PIN_MASK;
+    iowrite32(gpio_oe, gpio0 + GPIO_OE);
 
+    //on remet toutes les pins en entrée
+    set_bus_directivity(BusRead);
 }
 
 //----------------------------------------------------------------------
