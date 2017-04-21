@@ -126,10 +126,12 @@ volatile void * gpio2;
 volatile void * gpio3;
 volatile void * control;
 
+static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << 2) | //A(0-3) sur P0.2 à P0.5
+                                                (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
+
 static const uint32_t GPIO0_PIN_MASK = (1uL << 7)   | //Read P0.7
                                        (1uL << 20)  | //Write P0.20
-                                       (0xFuL << 2) | //A(0-3) sur P0.2 à P0.5
-                                       (0xFuL << 12); //A(4-7) sur P0.12 à P0.15
+                                       GPIO0_ADDRESS_PIN_MASK;
 
 struct
 {
@@ -502,7 +504,15 @@ static void set_bus_directivity(BusDirectivity dir)
  */
 static void set_bus_address(uint16_t address)
 {
-    //TODO
+    //on supprime le dernier bit pour passer de l'adressage en octets
+    //à l'adressage par mot de 16bits
+    address = address >> 1;
+
+    uint32_t gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4))
+    uint32_t gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
+
+    iowrite32(gpio0_set, gpio0 + GPIO_SETDATAOUT);
+    iowrite32(gpio0_clr, gpio0 + GPIO_CLEARDATAOUT);
 }
 
 //----------------------------------------------------------------------
