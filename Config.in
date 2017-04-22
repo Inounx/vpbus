@@ -1,4 +1,4 @@
-config BR2_PACKAGE_VIRTUAILES_PARALLEL_BUS
+config BR2_PACKAGE_VPBUS
 	bool vpbus
 	help
-	  Virtu'ailes parallel bus driver
+	  VirtuAiles parallel bus driver

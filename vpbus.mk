@@ -1,8 +1,6 @@
 VPBUS_VERSION = 0.1
-VPBUS_SITE = https://github.com/Inounx/vpbus-buildroot.git
-VPBUS_SITE_METHOD = git
-#VPBUS_SITE = $(TOPDIR)/package/vpbus
-#VPBUS_SITE_METHOD = local
+VPBUS_SITE = $(TOPDIR)/package/vpbus
+VPBUS_SITE_METHOD = local
 VPBUS_LICENSE = GPLv3+
 
 VPBUS_DEPENDENCIES = linux

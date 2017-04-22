@@ -5,7 +5,7 @@
  */
 
 #include "vpbus.h"
-#include <stdint.h>
+#include <linux/types.h>
 #include "am335x_gpio.h"
 #include "am335x_control.h"
 #include <asm/io.h>
@@ -17,9 +17,8 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/gpio.h>
-#include <sys/ioctl.h>
 
-MODULE_LICENSE("LGPLv3");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Marc Laval");
 MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 
@@ -58,18 +57,18 @@ MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 //D14 P3.20
 //D15 P3.21
 
-enum BusDirectivity
+typedef enum
 {
     BusRead,
     BusWrite
-};
+} BusDirectivity;
 
-enum SeekFrom
+typedef enum
 {
     SeekFromStart = 0,
     SeekFromCurrentPos = 1,
     SeekFromEnd = 2
-};
+} SeekFrom;
 
 //================================================================================
 //                         Déclaration des fonctions
@@ -87,8 +86,8 @@ static int device_write(struct file* f, const char __user *data, size_t size, lo
 static loff_t device_seek(struct file* f, loff_t offset, int from);
 
 //Fonctions internes
-static void init_bus();
-static void deinit_bus();
+static void init_bus(void);
+static void deinit_bus(void);
 static void set_bus_directivity(BusDirectivity dir);
 static void set_bus_address(uint16_t address);
 static uint16_t read_bus(uint16_t address);
@@ -127,11 +126,12 @@ volatile void * gpio3;
 volatile void * control;
 
 static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
-                                                (0xFuL << A4_PIN_INDEX); //A(4-7) sur P0.12 à P0.15
+                                                (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15
 
 static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.7
                                        (1uL << WRITE_PIN_INDEX)  | //Write P0.20
-                                       GPIO0_ADDRESS_PIN_MASK;
+                                       (0xFuL << A0_PIN_INDEX)   | //A(0-3) sur P0.2 à P0.5
+                                       (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15;
 
 struct
 {
@@ -306,17 +306,16 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
     //ce cas ne devrait pas arriver normalement
     //mais il faut le gérer au cas où
 
-    uint8_t * dataToWrite = kmalloc(size, GFP_KERNEL);
-    copy_from_user(dataToWrite, data, size);
-
     uint16_t sizeWritten = 0;
     uint16_t currentWriteIndex = 0;
     uint16_t tempWrite = 0;
+    uint8_t * dataToWrite = kmalloc(size, GFP_KERNEL);
+    copy_from_user(dataToWrite, data, size);
 
     //Premier accès non aligné
     if(vpbus.currentAddress & 0x01)
     {
-        tempWrite = (uint16_t)dataToWrite[currentWriteIndex] << 8
+        tempWrite = (uint16_t)dataToWrite[currentWriteIndex] << 8;
         write_bus(vpbus.currentAddress - 1, tempWrite);
         sizeWritten += 2;
         currentWriteIndex++;
@@ -391,9 +390,9 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
 //----------------------------------------------------------------------
 /*! \brief Initialise le bus
  */
-static void init_bus()
+static void init_bus(void)
 {
-    uint32_t gpio_oe = 0, gpio_output = 0;
+    uint32_t gpio_oe = 0;
     uint32_t pad_config = PAD_CONTROL_MUX_MODE_7 |
                           PAD_CONTROL_PULL_DISABLE |
                           PAD_CONTROL_RX_ACTIVE |
@@ -452,9 +451,9 @@ static void init_bus()
 //----------------------------------------------------------------------
 /*! \brief Relache le bus
  */
-static void deinit_bus()
+static void deinit_bus(void)
 {
-    gpio_oe = ioread32(gpio0 + GPIO_OE);
+    uint32_t gpio_oe = ioread32(gpio0 + GPIO_OE);
     gpio_oe |= GPIO0_PIN_MASK;
     iowrite32(gpio_oe, gpio0 + GPIO_OE);
 
@@ -467,7 +466,7 @@ static void deinit_bus()
  */
 static void set_bus_directivity(BusDirectivity dir)
 {
-    uint32_t gpio1_pins, gpio3_pins
+    uint32_t gpio1_pins, gpio3_pins;
     uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
@@ -515,7 +514,7 @@ static void set_bus_address(uint16_t address)
     //à l'adressage par mot de 16bits
     address = address >> 1;
 
-    gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4))
+    gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4));
     gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
 
     iowrite32(gpio0_set, gpio0 + GPIO_SETDATAOUT);
@@ -538,7 +537,7 @@ static uint16_t read_bus(uint16_t address)
     gpio_in = ioread32(gpio1 + GPIO_DATAIN);
     dataRead = (gpio_in >> D0_PIN_INDEX) & 0xFF;
     gpio_in = ioread32(gpio3 + GPIO_DATAIN);
-    dataRead |= (gpio_in >> D8_PIN_INDEX - 8) & 0xFF00;
+    dataRead |= (gpio_in >> (D8_PIN_INDEX - 8)) & 0xFF00;
 
     //Désactivation du read
     iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
@@ -551,7 +550,6 @@ static uint16_t read_bus(uint16_t address)
  */
 static void write_bus(uint16_t address, uint16_t data)
 {
-    uint32_t gpio_out;
     uint32_t gpio_set;
     uint32_t gpio_clr;
 
@@ -564,7 +562,7 @@ static void write_bus(uint16_t address, uint16_t data)
     iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
 
     //poids fort
-    gpio_set = ((uint32_t)(data & 0xFF00) << D8_PIN_INDEX - 8);
+    gpio_set = ((uint32_t)(data & 0xFF00) << (D8_PIN_INDEX - 8));
     gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
     iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
     iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
@@ -574,8 +572,6 @@ static void write_bus(uint16_t address, uint16_t data)
 
     //Désactivation du write
     iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
-
-    return dataRead;
 }
 
 
