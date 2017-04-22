@@ -52,10 +52,10 @@
 #define A6_PIN_INDEX 14
 #define A7_PIN_INDEX 15
 
-//Read P0.7
-//Write P0.20
-#define READ_PIN_INDEX 7
-#define WRITE_PIN_INDEX 20
+//Read P0.30
+//Write P0.31
+#define READ_PIN_INDEX 30
+#define WRITE_PIN_INDEX 31
 
 //D0 P1.12
 //D1 P1.13

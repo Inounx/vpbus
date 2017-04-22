@@ -28,35 +28,6 @@ MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 
 #define DRIVER_NAME "vpbus"
 
-//A0 P0.2
-//A1 P0.3
-//A2 P0.4
-//A3 P0.5
-//A4 P0.12
-//A5 P0.13
-//A6 P0.14
-//A7 P0.15
-
-//Read P0.7
-//Write P0.20
-
-//D0 P1.12
-//D1 P1.13
-//D2 P1.14
-//D3 P1.15
-//D4 P1.16
-//D5 P1.17
-//D6 P1.18
-//D7 P1.19
-//D8 P3.14
-//D9 P3.15
-//D10 P3.16
-//D11 P3.17
-//D12 P3.18
-//D13 P3.19
-//D14 P3.20
-//D15 P3.21
-
 typedef enum
 {
     BusRead,
@@ -128,8 +99,8 @@ volatile void * control;
 static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
                                                 (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15
 
-static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.7
-                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.20
+static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.30
+                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.31
                                        (0xFuL << A0_PIN_INDEX)   | //A(0-3) sur P0.2 à P0.5
                                        (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15;
 
@@ -404,12 +375,12 @@ static void init_bus(void)
     iowrite32(pad_config, control + PAD_CONTROL_SPI0_D0);
     iowrite32(pad_config, control + PAD_CONTROL_SPI0_D1);
     iowrite32(pad_config, control + PAD_CONTROL_SPI0_CS0);
-    iowrite32(pad_config, control + PAD_CONTROL_ECAP0_IN_PWM0_OUT);
+    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WAIT0);
     iowrite32(pad_config, control + PAD_CONTROL_UART1_CTSn);
     iowrite32(pad_config, control + PAD_CONTROL_UART1_RTSn);
     iowrite32(pad_config, control + PAD_CONTROL_UART1_RXD);
     iowrite32(pad_config, control + PAD_CONTROL_UART1_TXD);
-    iowrite32(pad_config, control + PAD_CONTROL_XDMA_EVENT_INTR1);
+    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WPN);
     iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD12);
     iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD13);
     iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD14);
