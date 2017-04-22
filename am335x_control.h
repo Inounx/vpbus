@@ -38,6 +38,8 @@
 #define PAD_CONTROL_MCASP0_FSR          0x9A4
 #define PAD_CONTROL_MCASP0_AXR1         0x9A8
 #define PAD_CONTROL_MCASP0_AHCLKX       0x9AC
+#define PAD_CONTROL_GPMC_WAIT0          0x870
+#define PAD_CONTROL_GPMC_WPN            0x874
 
 
 //Définitions valeurs du registre PAD_CONTROL
