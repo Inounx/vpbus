@@ -27,6 +27,7 @@ MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 //================================================================================
 
 #define DRIVER_NAME "vpbus"
+#define DEVICE_NAME DRIVER_NAME
 
 typedef enum
 {
@@ -59,7 +60,6 @@ static loff_t device_seek(struct file* f, loff_t offset, int from);
 //Fonctions internes
 static void init_bus(void);
 static void deinit_bus(void);
-static void set_bus_directivity(BusDirectivity dir);
 static void set_bus_address(uint16_t address);
 static uint16_t read_bus(uint16_t address);
 static void write_bus(uint16_t address, uint16_t data);
@@ -90,20 +90,6 @@ struct device *dev;
 static struct class *class;
 dev_t devt;
 
-volatile void * gpio0;
-volatile void * gpio1;
-volatile void * gpio2;
-volatile void * gpio3;
-volatile void * control;
-
-static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
-                                                (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15
-
-static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.30
-                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.31
-                                       (0xFuL << A0_PIN_INDEX)   | //A(0-3) sur P0.2 à P0.5
-                                       (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15;
-
 struct
 {
     uint16_t currentAddress;
@@ -113,6 +99,21 @@ struct
 //================================================================================
 //                              Fonctions
 //================================================================================
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
+#define TRY_RESERVE(my_gpio, error_label) if(!gpio_is_valid(my_gpio))\
+{\
+   printk(KERN_INFO "[%s] %s: invalid GPIO\n", DRIVER_NAME, TOSTRING(my_gpio));\
+   status = -ENODEV;\
+   goto error_label;\
+}\
+else if(!gpio_request(my_gpio, DRIVER_NAME))\
+{\
+    printk(KERN_INFO "[%s] %s: GPIO request failed\n", DRIVER_NAME, TOSTRING(my_gpio));\
+    status = -EBUSY;\
+    goto error_label;\
+}
 
 //----------------------------------------------------------------------
 /*! \brief Fonction d'initialisation du module
@@ -121,19 +122,19 @@ static int __init vpbus_init(void)
 {
     int status;
 
-    printk(KERN_INFO "[VPBUS] Initializing...\n");
+    printk(KERN_INFO "[%s] Initializing...\n", DRIVER_NAME);
 
     major = register_chrdev(0, DRIVER_NAME, &fops);
     if(major < 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed registering chrdev!\n");
+        printk(KERN_ERR "[%s] Failed registering chrdev!\n", DRIVER_NAME);
         return major;
     }
 
     class = class_create(THIS_MODULE, DRIVER_NAME);
     if(IS_ERR(class))
     {
-        printk(KERN_ERR "[VPBUS] Failed to create class!\n");
+        printk(KERN_ERR "[%s] Failed to create class!\n", DRIVER_NAME);
         status = PTR_ERR(class);
         goto errorClass;
     }
@@ -144,20 +145,94 @@ static int __init vpbus_init(void)
 
     if(status != 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed to create device\n");
+        printk(KERN_ERR "[%s] Failed to create device\n", DRIVER_NAME);
         goto error;
     }
 
-    //mapping memoire des block de registre GPIO
-    //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
-    gpio0 = ioremap_nocache(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-    control = ioremap_nocache(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
+    TRY_RESERVE(GPIO_A0, error_A0)
+    TRY_RESERVE(GPIO_A1, error_A1)
+    TRY_RESERVE(GPIO_A2, error_A2)
+    TRY_RESERVE(GPIO_A3, error_A3)
+    TRY_RESERVE(GPIO_A4, error_A4)
+    TRY_RESERVE(GPIO_A5, error_A5)
+    TRY_RESERVE(GPIO_A6, error_A6)
+    TRY_RESERVE(GPIO_A7, error_A7)
+
+    TRY_RESERVE(GPIO_READ, error_READ)
+    TRY_RESERVE(GPIO_WRITE, error_WRITE)
+
+    TRY_RESERVE(GPIO_D0, error_D0)
+    TRY_RESERVE(GPIO_D1, error_D1)
+    TRY_RESERVE(GPIO_D2, error_D2)
+    TRY_RESERVE(GPIO_D3, error_D3)
+    TRY_RESERVE(GPIO_D4, error_D4)
+    TRY_RESERVE(GPIO_D5, error_D5)
+    TRY_RESERVE(GPIO_D6, error_D6)
+    TRY_RESERVE(GPIO_D7, error_D7)
+
+    TRY_RESERVE(GPIO_D8, error_D8)
+    TRY_RESERVE(GPIO_D9, error_D9)
+    TRY_RESERVE(GPIO_D10, error_D10)
+    TRY_RESERVE(GPIO_D11, error_D11)
+    TRY_RESERVE(GPIO_D12, error_D12)
+    TRY_RESERVE(GPIO_D13, error_D13)
+    TRY_RESERVE(GPIO_D14, error_D14)
+    TRY_RESERVE(GPIO_D15, error_D15)
 
     return 0;
 
+error_D15:
+    gpio_free(GPIO_D15);
+error_D14:
+    gpio_free(GPIO_D14);
+error_D13:
+    gpio_free(GPIO_D13);
+error_D12:
+    gpio_free(GPIO_D12);
+error_D11:
+    gpio_free(GPIO_D11);
+error_D10:
+    gpio_free(GPIO_D10);
+error_D9:
+    gpio_free(GPIO_D9);
+error_D8:
+    gpio_free(GPIO_D8);
+error_D7:
+    gpio_free(GPIO_D7);
+error_D6:
+    gpio_free(GPIO_D6);
+error_D5:
+    gpio_free(GPIO_D5);
+error_D4:
+    gpio_free(GPIO_D4);
+error_D3:
+    gpio_free(GPIO_D3);
+error_D2:
+    gpio_free(GPIO_D2);
+error_D1:
+    gpio_free(GPIO_D1);
+error_D0:
+    gpio_free(GPIO_D0);
+error_WRITE:
+    gpio_free(GPIO_WRITE);
+error_READ:
+    gpio_free(GPIO_READ);
+error_A7:
+    gpio_free(GPIO_A0);
+error_A6:
+    gpio_free(GPIO_A0);
+error_A5:
+    gpio_free(GPIO_A0);
+error_A4:
+    gpio_free(GPIO_A0);
+error_A3:
+    gpio_free(GPIO_A0);
+error_A2:
+    gpio_free(GPIO_A0);
+error_A1:
+    gpio_free(GPIO_A0);
+error_A0:
+    gpio_free(GPIO_A0);
 error:
     class_destroy(class);
 errorClass:
@@ -170,16 +245,37 @@ errorClass:
  */
 static void __exit vpbus_exit(void)
 {
-    iounmap(gpio0);
-    iounmap(gpio1);
-    iounmap(gpio2);
-    iounmap(gpio3);
-    iounmap(control);
+    gpio_free(GPIO_D15);
+    gpio_free(GPIO_D14);
+    gpio_free(GPIO_D13);
+    gpio_free(GPIO_D12);
+    gpio_free(GPIO_D11);
+    gpio_free(GPIO_D10);
+    gpio_free(GPIO_D9);
+    gpio_free(GPIO_D8);
+    gpio_free(GPIO_D7);
+    gpio_free(GPIO_D6);
+    gpio_free(GPIO_D5);
+    gpio_free(GPIO_D4);
+    gpio_free(GPIO_D3);
+    gpio_free(GPIO_D2);
+    gpio_free(GPIO_D1);
+    gpio_free(GPIO_D0);
+    gpio_free(GPIO_WRITE);
+    gpio_free(GPIO_READ);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
+    gpio_free(GPIO_A0);
 
     device_destroy(class, devt);
     class_destroy(class);
     unregister_chrdev(major, DRIVER_NAME);
-    printk(KERN_INFO "[VPBUS] Unloading module\n");
+    printk(KERN_INFO "[%s] Unloading module\n", DRIVER_NAME);
 }
 
 //----------------------------------------------------------------------
@@ -187,7 +283,7 @@ static void __exit vpbus_exit(void)
  */
 static int device_open(struct inode *i, struct file *f)
 {
-    printk(KERN_INFO "[VPBUS] Opening device\n");
+    printk(KERN_INFO "[%s] Opening device\n", DRIVER_NAME);
     init_bus();
     return 0;
 }
@@ -197,7 +293,7 @@ static int device_open(struct inode *i, struct file *f)
  */
 static int device_release(struct inode *i, struct file *f)
 {
-    printk(KERN_INFO "[VPBUS] Device release\n");
+    printk(KERN_INFO "[%s] Device release\n", DRIVER_NAME);
     deinit_bus();
     return 0;
 }
@@ -208,7 +304,7 @@ static int device_release(struct inode *i, struct file *f)
  */
 static long device_ioctl (struct file *f, unsigned int cmd, unsigned long arg)
 {
-    printk(KERN_INFO "[VPBUS] ioctl not implemented !\n");
+    printk(KERN_INFO "[%s] ioctl not implemented !\n", DRIVER_NAME);
     return 0;
 }
 
@@ -363,60 +459,38 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
  */
 static void init_bus(void)
 {
-    uint32_t gpio_oe = 0;
-    uint32_t pad_config = PAD_CONTROL_MUX_MODE_7 |
-                          PAD_CONTROL_PULL_DISABLE |
-                          PAD_CONTROL_RX_ACTIVE |
-                          PAD_CONTROL_SLEW_FAST;
+    gpio_direction_output(GPIO_READ, 1);
+    gpio_direction_output(GPIO_WRITE, 1);
 
-    //Configuration du multiplexeur interne pour que les GPIO soient cablées
-    //sur les pates en sortie
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_SCLK);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_D0);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_D1);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_CS0);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WAIT0);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_CTSn);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_RTSn);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_RXD);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_TXD);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WPN);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD12);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD13);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD14);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD15);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A0);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A1);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A2);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A3);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_ACLKX);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_FSX);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AXR0);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AHCLKR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_ACLKR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_FSR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AXR1);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AHCLKX);
+    gpio_direction_output(GPIO_A0, 0);
+    gpio_direction_output(GPIO_A1, 0);
+    gpio_direction_output(GPIO_A2, 0);
+    gpio_direction_output(GPIO_A3, 0);
+    gpio_direction_output(GPIO_A4, 0);
+    gpio_direction_output(GPIO_A5, 0);
+    gpio_direction_output(GPIO_A6, 0);
+    gpio_direction_output(GPIO_A7, 0);
 
-    //Init read et write
-    //Init bus d'adresse
-
-    //Faut il une section critique ou autre chose du même genre ?
-    //ATTENTION dans registre OE, bit à 1 = pin en entrée
-
-    //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
-    iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio0 + GPIO_SETDATAOUT);
-
-    gpio_oe = ioread32(gpio0 + GPIO_OE);
-    gpio_oe &= ~GPIO0_PIN_MASK;
-    iowrite32(gpio_oe, gpio0 + GPIO_OE);
+    gpio_direction_input(GPIO_D0);
+    gpio_direction_input(GPIO_D1);
+    gpio_direction_input(GPIO_D2);
+    gpio_direction_input(GPIO_D3);
+    gpio_direction_input(GPIO_D4);
+    gpio_direction_input(GPIO_D5);
+    gpio_direction_input(GPIO_D6);
+    gpio_direction_input(GPIO_D7);
+    gpio_direction_input(GPIO_D8);
+    gpio_direction_input(GPIO_D9);
+    gpio_direction_input(GPIO_D10);
+    gpio_direction_input(GPIO_D11);
+    gpio_direction_input(GPIO_D12);
+    gpio_direction_input(GPIO_D13);
+    gpio_direction_input(GPIO_D14);
+    gpio_direction_input(GPIO_D15);
 
     //Init variables internes
     vpbus.currentAddress = 0;
     set_bus_address(vpbus.currentAddress);
-
-    //init bus de données par défaut en lecture
-    set_bus_directivity(BusRead);
 }
 
 //----------------------------------------------------------------------
@@ -424,53 +498,33 @@ static void init_bus(void)
  */
 static void deinit_bus(void)
 {
-    uint32_t gpio_oe = ioread32(gpio0 + GPIO_OE);
-    gpio_oe |= GPIO0_PIN_MASK;
-    iowrite32(gpio_oe, gpio0 + GPIO_OE);
-
     //on remet toutes les pins en entrée
-    set_bus_directivity(BusRead);
-}
-
-//----------------------------------------------------------------------
-/*! \brief Change la directivité du bus
- */
-static void set_bus_directivity(BusDirectivity dir)
-{
-    uint32_t gpio1_pins, gpio3_pins;
-    uint32_t gpio_oe;
-    if(vpbus.directivity != dir)
-    {
-        vpbus.directivity = dir;
-
-        //Selection des bits à commuter dans les registres OE
-        gpio1_pins = (0xFFuL << D0_PIN_INDEX); //D0 à D7 sur P1.12 à P1.19
-        gpio3_pins = (0xFFuL << D8_PIN_INDEX); //D8 à D15 sur P1.14 à P1.21
-
-        //Faut il une section critique ou autre chose du même genre ?
-        //ATTENTION dans registre OE, bit à 1 = pin en entrée
-        gpio_oe = ioread32(gpio1 + GPIO_OE);
-        if(dir == BusRead)
-        {
-           gpio_oe |= gpio1_pins;
-        }
-        else
-        {
-            gpio_oe &= ~gpio1_pins;
-        }
-        iowrite32(gpio_oe, gpio1 + GPIO_OE);
-
-        gpio_oe = ioread32(gpio3 + GPIO_OE);
-        if(dir == BusRead)
-        {
-           gpio_oe |= gpio3_pins;
-        }
-        else
-        {
-            gpio_oe &= ~gpio3_pins;
-        }
-        iowrite32(gpio_oe, gpio3 + GPIO_OE);
-    }
+    gpio_direction_input(GPIO_D15);
+    gpio_direction_input(GPIO_D14);
+    gpio_direction_input(GPIO_D13);
+    gpio_direction_input(GPIO_D12);
+    gpio_direction_input(GPIO_D11);
+    gpio_direction_input(GPIO_D10);
+    gpio_direction_input(GPIO_D9);
+    gpio_direction_input(GPIO_D8);
+    gpio_direction_input(GPIO_D7);
+    gpio_direction_input(GPIO_D6);
+    gpio_direction_input(GPIO_D5);
+    gpio_direction_input(GPIO_D4);
+    gpio_direction_input(GPIO_D3);
+    gpio_direction_input(GPIO_D2);
+    gpio_direction_input(GPIO_D1);
+    gpio_direction_input(GPIO_D0);
+    gpio_direction_input(GPIO_WRITE);
+    gpio_direction_input(GPIO_READ);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
+    gpio_direction_input(GPIO_A0);
 }
 
 //----------------------------------------------------------------------
@@ -478,18 +532,25 @@ static void set_bus_directivity(BusDirectivity dir)
  */
 static void set_bus_address(uint16_t address)
 {
-    uint32_t gpio0_set;
-    uint32_t gpio0_clr;
-
     //on supprime le dernier bit pour passer de l'adressage en octets
     //à l'adressage par mot de 16bits
     address = address >> 1;
 
-    gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4));
-    gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
-
-    iowrite32(gpio0_set, gpio0 + GPIO_SETDATAOUT);
-    iowrite32(gpio0_clr, gpio0 + GPIO_CLEARDATAOUT);
+    gpio_set_value(GPIO_A0, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A1, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A2, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A3, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A4, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A5, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A6, address & 0x01);
+    address = address >> 1;
+    gpio_set_value(GPIO_A7, address & 0x01);
 }
 
 //----------------------------------------------------------------------
@@ -499,19 +560,64 @@ static uint16_t read_bus(uint16_t address)
 {
     uint32_t gpio_in;
     uint16_t dataRead;
-    set_bus_directivity(BusRead);
+    if(vpbus.directivity != BusRead)
+    {
+        vpbus.directivity = BusRead;
+        gpio_direction_input(GPIO_D15);
+        gpio_direction_input(GPIO_D14);
+        gpio_direction_input(GPIO_D13);
+        gpio_direction_input(GPIO_D12);
+        gpio_direction_input(GPIO_D11);
+        gpio_direction_input(GPIO_D10);
+        gpio_direction_input(GPIO_D9);
+        gpio_direction_input(GPIO_D8);
+        gpio_direction_input(GPIO_D7);
+        gpio_direction_input(GPIO_D6);
+        gpio_direction_input(GPIO_D5);
+        gpio_direction_input(GPIO_D4);
+        gpio_direction_input(GPIO_D3);
+        gpio_direction_input(GPIO_D2);
+        gpio_direction_input(GPIO_D1);
+        gpio_direction_input(GPIO_D0);
+    }
 
     //Activation du read
-    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+    gpio_set_value(GPIO_READ, 0);
 
-    //Besoin d'ajouter une attente?
-    gpio_in = ioread32(gpio1 + GPIO_DATAIN);
-    dataRead = (gpio_in >> D0_PIN_INDEX) & 0xFF;
-    gpio_in = ioread32(gpio3 + GPIO_DATAIN);
-    dataRead |= (gpio_in >> (D8_PIN_INDEX - 8)) & 0xFF00;
+    dataRead = gpio_get_value(GPIO_D15) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D14) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D13) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D12) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D11) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D10) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D9) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D8) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D7) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D6) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D5) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D4) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D3) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D2) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D1) & 0x01;
+    dataRead = dataRead << 1;
+    dataRead |= gpio_get_value(GPIO_D0) & 0x01;
 
     //Désactivation du read
-    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+    gpio_set_value(GPIO_READ, 1);
 
     return dataRead;
 }
@@ -521,28 +627,45 @@ static uint16_t read_bus(uint16_t address)
  */
 static void write_bus(uint16_t address, uint16_t data)
 {
-    uint32_t gpio_set;
-    uint32_t gpio_clr;
+    vpbus.directivity = BusWrite;
 
-    set_bus_directivity(BusWrite);
-
-    //poids faible
-    gpio_set = ((uint32_t)(data & 0xFF) << D0_PIN_INDEX);
-    gpio_clr = (~gpio_set & GPIO1_DATA_PIN_MASK);
-    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
-    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
-
-    //poids fort
-    gpio_set = ((uint32_t)(data & 0xFF00) << (D8_PIN_INDEX - 8));
-    gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
-    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
-    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+    gpio_direction_output(GPIO_D0, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D1, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D2, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D3, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D4, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D5, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D6, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D7, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D8, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D9, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D10, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D11, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D12, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D13, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D14, data & 0x01);
+    data = data >> 1;
+    gpio_direction_output(GPIO_D15, data & 0x01);
 
     //Activation du write
-    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+    gpio_set_value(GPIO_WRITE, 0);
 
     //Désactivation du write
-    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+    gpio_set_value(GPIO_WRITE, 1);
 }
 
 

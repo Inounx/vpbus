@@ -7,55 +7,38 @@
 #ifndef VPBUS_H
 #define VPBUS_H
 
+#define GPIO_ID(port, pin) (32 * port + pin)
+
 //======================================================================
 //Définitions modifiables en fonction du bus souhaité
-
-//Attention dans les bits "utiles" on ne compte pas le bit 0 qui est "virtuel"
-//il n'apparait pas sur le bus, c'est juste qu'on adresse des mots de 16bits
-//donc on accède aux mots par des adresses paires dons le bit 0 est toujours à 0
-//Le nombre de bits utiles détermine seulement le nombre de mots adressables
-//Pour le ramener à l'octet il faut logiquement multiplier par 2
-//***Exemple pour 8bits :
-// - Nbre de mots adressables : 256
-// - Addresse min: 0
-// - Addresse max: 0x1FE
-//***Exemple pour 4bits :
-// - Nbre de mots adressables : 16
-// - Addresse min: 0
-// - Addresse max: 0x1E
-#define USABLE_ADDRESS_BITS 8
-
-//======================================================================
-//Définitions non modifiables
-#define MAX_ADDRESS_BITS 8
-
-#if USABLE_ADDRESS_BITS > MAX_ADDRESS_BITS
-#error "USABLE_ADDRESS_BITS cannot be greter than MAX_ADDRESS_BITS!"
-#else
-#define MAX_BUS_ADDRESS ((1uL << (USABLE_ADDRESS_BITS + 1)) - 1)
-#endif
-
 //A0 P0.2
+#define GPIO_A0 GPIO_ID(0, 2)
+
 //A1 P0.3
+#define GPIO_A1 GPIO_ID(0, 3)
+
 //A2 P0.4
+#define GPIO_A2 GPIO_ID(0, 4)
+
 //A3 P0.5
+#define GPIO_A3 GPIO_ID(0, 5)
+
 //A4 P0.12
+#define GPIO_A4 GPIO_ID(0, 12)
+
 //A5 P0.13
+#define GPIO_A5 GPIO_ID(0, 13)
+
 //A6 P0.14
+#define GPIO_A6 GPIO_ID(0, 14)
+
 //A7 P0.15
-#define A0_PIN_INDEX 2
-#define A1_PIN_INDEX 3
-#define A2_PIN_INDEX 4
-#define A3_PIN_INDEX 5
-#define A4_PIN_INDEX 12
-#define A5_PIN_INDEX 13
-#define A6_PIN_INDEX 14
-#define A7_PIN_INDEX 15
+#define GPIO_A7 GPIO_ID(0, 15)
 
 //Read P0.30
 //Write P0.31
-#define READ_PIN_INDEX 30
-#define WRITE_PIN_INDEX 31
+#define GPIO_READ GPIO_ID(0, 30)
+#define GPIO_WRITE GPIO_ID(0, 31)
 
 //D0 P1.12
 //D1 P1.13
@@ -73,25 +56,24 @@
 //D13 P3.19
 //D14 P3.20
 //D15 P3.21
-#define D0_PIN_INDEX 12
-#define D1_PIN_INDEX 13
-#define D2_PIN_INDEX 14
-#define D3_PIN_INDEX 15
-#define D4_PIN_INDEX 16
-#define D5_PIN_INDEX 17
-#define D6_PIN_INDEX 18
-#define D7_PIN_INDEX 19
-#define GPIO1_DATA_PIN_MASK (0xFFuL << D0_PIN_INDEX)
+#define GPIO_D0 GPIO_ID(1, 12)
+#define GPIO_D1 GPIO_ID(1, 13)
+#define GPIO_D2 GPIO_ID(1, 14)
+#define GPIO_D3 GPIO_ID(1, 15)
+#define GPIO_D4 GPIO_ID(1, 16)
+#define GPIO_D5 GPIO_ID(1, 17)
+#define GPIO_D6 GPIO_ID(1, 18)
+#define GPIO_D7 GPIO_ID(1, 19)
 
-#define D8_PIN_INDEX 14
-#define D9_PIN_INDEX 15
-#define D10_PIN_INDEX 16
-#define D11_PIN_INDEX 17
-#define D12_PIN_INDEX 18
-#define D13_PIN_INDEX 19
-#define D14_PIN_INDEX 20
-#define D15_PIN_INDEX 21
-#define GPIO3_DATA_PIN_MASK (0xFFuL << D8_PIN_INDEX)
+
+#define GPIO_D8 GPIO_ID(3, 14)
+#define GPIO_D9 GPIO_ID(3, 15)
+#define GPIO_D10 GPIO_ID(3, 16)
+#define GPIO_D11 GPIO_ID(3, 17)
+#define GPIO_D12 GPIO_ID(3, 18)
+#define GPIO_D13 GPIO_ID(3, 19)
+#define GPIO_D14 GPIO_ID(3, 20)
+#define GPIO_D15 GPIO_ID(3, 21)
 
 
 #endif //VPBUS_H

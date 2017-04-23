@@ -1,4 +1,4 @@
-config BR2_PACKAGE_VPBUS
-	bool vpbus
+config BR2_PACKAGE_VPBUS_GPIOLIB
+	bool vpbus_gpiolib
 	help
-	  VirtuAiles parallel bus driver
+	  VirtuAiles parallel bus driver using GPIOLIB
