@@ -8,6 +8,9 @@
 #include <linux/types.h>
 #include "am335x_gpio.h"
 #include "am335x_control.h"
+#include <linux/sched.h>	/* For current */
+#include <linux/tty.h>		/* For the tty declarations */
+#include <linux/version.h>	/* For LINUX_VERSION_CODE */
 #include <asm/io.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -27,6 +30,7 @@ MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 //================================================================================
 
 #define DRIVER_NAME "vpbus"
+#define DEVICE_NAME DRIVER_NAME
 
 typedef enum
 {
@@ -85,10 +89,11 @@ module_exit(vpbus_exit);
    Simple question de facilité pour la lecture du code d'exemple.
    À éviter au maximum en vrai.
  */
-int major;
+static int major;
 struct device *dev;
 static struct class *class;
-dev_t devt;
+static dev_t devt;
+static int device_is_opened = 0;
 
 volatile void * gpio0;
 volatile void * gpio1;
@@ -123,6 +128,59 @@ static int __init vpbus_init(void)
 
     printk(KERN_INFO "[VPBUS] Initializing...\n");
 
+    if(request_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+    {
+        printk(KERN_ALERT
+               "[%s] error: unable to obtain I/O memory address for GPIO0\n",
+               DEVICE_NAME);
+
+        return -EBUSY;
+    }
+
+    if(request_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+    {
+        printk(KERN_ALERT
+               "[%s] error: unable to obtain I/O memory address for GPIO1\n",
+               DEVICE_NAME);
+
+        return -EBUSY;
+    }
+
+    if(request_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+    {
+        printk(KERN_ALERT
+               "[%s] error: unable to obtain I/O memory address for GPIO2\n",
+               DEVICE_NAME);
+
+        return -EBUSY;
+    }
+
+    if(request_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+    {
+        printk(KERN_ALERT
+               "[%s] error: unable to obtain I/O memory address for GPIO3\n",
+               DEVICE_NAME);
+
+        return -EBUSY;
+    }
+
+    if(request_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE, DEVICE_NAME) == NULL)
+    {
+        printk(KERN_ALERT
+               "[%s] error: unable to obtain I/O memory address for control module\n",
+               DEVICE_NAME);
+
+        return -EBUSY;
+    }
+
+    //mapping memoire des block de registre GPIO
+    //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
+    gpio0 = ioremap_nocache(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
+    gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
+    gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
+    gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
+    control = ioremap_nocache(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
+
     major = register_chrdev(0, DRIVER_NAME, &fops);
     if(major < 0)
     {
@@ -148,14 +206,6 @@ static int __init vpbus_init(void)
         goto error;
     }
 
-    //mapping memoire des block de registre GPIO
-    //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
-    gpio0 = ioremap_nocache(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-    control = ioremap_nocache(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
-
     return 0;
 
 error:
@@ -176,6 +226,12 @@ static void __exit vpbus_exit(void)
     iounmap(gpio3);
     iounmap(control);
 
+    release_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
+    release_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
+    release_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
+    release_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
+    release_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
+
     device_destroy(class, devt);
     class_destroy(class);
     unregister_chrdev(major, DRIVER_NAME);
@@ -187,8 +243,21 @@ static void __exit vpbus_exit(void)
  */
 static int device_open(struct inode *i, struct file *f)
 {
+    if(device_is_opened)
+    {
+        //on n'autorise pas l'ouverture simultanée de ce périph
+        return -EBUSY;
+    }
+
+    device_is_opened++;
+
     printk(KERN_INFO "[VPBUS] Opening device\n");
+
+    //incremente le compteur d'utilisation du module
+    //si ce compte n'est pas à 0, le kernel n'autorisera pas le rmmod
+    try_module_get(THIS_MODULE);
     init_bus();
+
     return 0;
 }
 
@@ -199,6 +268,8 @@ static int device_release(struct inode *i, struct file *f)
 {
     printk(KERN_INFO "[VPBUS] Device release\n");
     deinit_bus();
+    module_put(THIS_MODULE);
+    device_is_opened--;
     return 0;
 }
 
@@ -407,9 +478,12 @@ static void init_bus(void)
     //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
     iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio0 + GPIO_SETDATAOUT);
 
+    //Protection de la séquence Read-Modify-Write
+    preempt_disable();
     gpio_oe = ioread32(gpio0 + GPIO_OE);
     gpio_oe &= ~GPIO0_PIN_MASK;
     iowrite32(gpio_oe, gpio0 + GPIO_OE);
+    preempt_enable();
 
     //Init variables internes
     vpbus.currentAddress = 0;
@@ -424,9 +498,13 @@ static void init_bus(void)
  */
 static void deinit_bus(void)
 {
-    uint32_t gpio_oe = ioread32(gpio0 + GPIO_OE);
+    uint32_t gpio_oe = 0;
+    //Protection de la séquence Read-Modify-Write
+    preempt_disable();
+    gpio_oe = ioread32(gpio0 + GPIO_OE);
     gpio_oe |= GPIO0_PIN_MASK;
     iowrite32(gpio_oe, gpio0 + GPIO_OE);
+    preempt_enable();
 
     //on remet toutes les pins en entrée
     set_bus_directivity(BusRead);
@@ -447,7 +525,8 @@ static void set_bus_directivity(BusDirectivity dir)
         gpio1_pins = (0xFFuL << D0_PIN_INDEX); //D0 à D7 sur P1.12 à P1.19
         gpio3_pins = (0xFFuL << D8_PIN_INDEX); //D8 à D15 sur P1.14 à P1.21
 
-        //Faut il une section critique ou autre chose du même genre ?
+        //Protection de la séquence Read-Modify-Write
+        preempt_disable();
         //ATTENTION dans registre OE, bit à 1 = pin en entrée
         gpio_oe = ioread32(gpio1 + GPIO_OE);
         if(dir == BusRead)
@@ -470,6 +549,7 @@ static void set_bus_directivity(BusDirectivity dir)
             gpio_oe &= ~gpio3_pins;
         }
         iowrite32(gpio_oe, gpio3 + GPIO_OE);
+        preempt_enable();
     }
 }
 
