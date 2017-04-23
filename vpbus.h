@@ -9,6 +9,8 @@
 
 #define GPIO_ID(port, pin) (32 * port + pin)
 
+#define MAX_BUS_ADDRESS 0x1FF
+
 //======================================================================
 //Définitions modifiables en fonction du bus souhaité
 //A0 P0.2

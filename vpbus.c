@@ -558,7 +558,6 @@ static void set_bus_address(uint16_t address)
  */
 static uint16_t read_bus(uint16_t address)
 {
-    uint32_t gpio_in;
     uint16_t dataRead;
     if(vpbus.directivity != BusRead)
     {
