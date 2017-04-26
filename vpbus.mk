@@ -1,5 +1,5 @@
 VPBUS_VERSION = 0.1
-VPBUS_SITE = $(TOPDIR)/package/vpbus
+VPBUS_SITE = $(BR2_EXTERNAL)/package/vpbus
 VPBUS_SITE_METHOD = local
 VPBUS_LICENSE = GPLv3+
 
