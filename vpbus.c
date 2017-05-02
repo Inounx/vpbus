@@ -126,52 +126,52 @@ static int __init vpbus_init(void)
 {
     int status;
 
-    printk(KERN_INFO "[VPBUS] Initializing...\n");
+    printk(KERN_INFO "[VPBUS] Initializing (!) ...\n");
 
-    if(request_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-    {
-        printk(KERN_ALERT
-               "[%s] error: unable to obtain I/O memory address for GPIO0\n",
-               DEVICE_NAME);
+//    if(request_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+//    {
+//        printk(KERN_ALERT
+//               "[%s] error: unable to obtain I/O memory address for GPIO0\n",
+//               DEVICE_NAME);
 
-        return -EBUSY;
-    }
+//        return -EBUSY;
+//    }
 
-    if(request_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-    {
-        printk(KERN_ALERT
-               "[%s] error: unable to obtain I/O memory address for GPIO1\n",
-               DEVICE_NAME);
+//    if(request_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+//    {
+//        printk(KERN_ALERT
+//               "[%s] error: unable to obtain I/O memory address for GPIO1\n",
+//               DEVICE_NAME);
 
-        return -EBUSY;
-    }
+//        return -EBUSY;
+//    }
 
-    if(request_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-    {
-        printk(KERN_ALERT
-               "[%s] error: unable to obtain I/O memory address for GPIO2\n",
-               DEVICE_NAME);
+//    if(request_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+//    {
+//        printk(KERN_ALERT
+//               "[%s] error: unable to obtain I/O memory address for GPIO2\n",
+//               DEVICE_NAME);
 
-        return -EBUSY;
-    }
+//        return -EBUSY;
+//    }
 
-    if(request_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-    {
-        printk(KERN_ALERT
-               "[%s] error: unable to obtain I/O memory address for GPIO3\n",
-               DEVICE_NAME);
+//    if(request_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
+//    {
+//        printk(KERN_ALERT
+//               "[%s] error: unable to obtain I/O memory address for GPIO3\n",
+//               DEVICE_NAME);
 
-        return -EBUSY;
-    }
+//        return -EBUSY;
+//    }
 
-    if(request_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE, DEVICE_NAME) == NULL)
-    {
-        printk(KERN_ALERT
-               "[%s] error: unable to obtain I/O memory address for control module\n",
-               DEVICE_NAME);
+//    if(request_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE, DEVICE_NAME) == NULL)
+//    {
+//        printk(KERN_ALERT
+//               "[%s] error: unable to obtain I/O memory address for control module\n",
+//               DEVICE_NAME);
 
-        return -EBUSY;
-    }
+//        return -EBUSY;
+//    }
 
     //mapping memoire des block de registre GPIO
     //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
@@ -226,11 +226,11 @@ static void __exit vpbus_exit(void)
     iounmap(gpio3);
     iounmap(control);
 
-    release_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-    release_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-    release_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-    release_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-    release_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
+//    release_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
+//    release_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
+//    release_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
+//    release_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
+//    release_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
 
     device_destroy(class, devt);
     class_destroy(class);
@@ -279,7 +279,7 @@ static int device_release(struct inode *i, struct file *f)
  */
 static long device_ioctl (struct file *f, unsigned int cmd, unsigned long arg)
 {
-    printk(KERN_INFO "[VPBUS] ioctl not implemented !\n");
+    //printk(KERN_INFO "[VPBUS] ioctl not implemented !\n");
     return 0;
 }
 
@@ -302,6 +302,8 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     uint16_t currentReadIndex = 0;
     uint16_t tempRead = 0;
 
+    printk(KERN_INFO "[VPBUS] Demande lecture de %d octets\n", size);
+
     //Premier accès non aligné
     if(vpbus.currentAddress & 0x01)
     {
@@ -313,6 +315,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
 
     while(currentReadIndex < size-1)
     {
+        printk(KERN_INFO "[VPBUS] Read bus at %d\n", vpbus.currentAddress);
         tempRead = read_bus(vpbus.currentAddress);
         *(uint16_t*)(&tempData[currentReadIndex]) = tempRead;
         vpbus.currentAddress += 2;
@@ -353,6 +356,8 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
     uint16_t tempWrite = 0;
     uint8_t * dataToWrite = kmalloc(size, GFP_KERNEL);
     copy_from_user(dataToWrite, data, size);
+
+    printk(KERN_INFO "[VPBUS] Demande ecriture de %d octets\n", size);
 
     //Premier accès non aligné
     if(vpbus.currentAddress & 0x01)
@@ -424,6 +429,8 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
         default:
             return vpbus.currentAddress;
     }
+
+    printk(KERN_INFO "[VPBUS] Set address at %d \n", vpbus.currentAddress);
 
     vpbus.currentAddress = newAddress;
     return vpbus.currentAddress;
@@ -519,6 +526,7 @@ static void set_bus_directivity(BusDirectivity dir)
     uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
+        printk(KERN_INFO "[VPBUS] Set bus directivity at %d \n", dir);
         vpbus.directivity = dir;
 
         //Selection des bits à commuter dans les registres OE
@@ -603,6 +611,8 @@ static void write_bus(uint16_t address, uint16_t data)
 {
     uint32_t gpio_set;
     uint32_t gpio_clr;
+
+    printk(KERN_INFO "[VPBUS] Write bus %d at %d \n", data, address);
 
     set_bus_directivity(BusWrite);
 
