@@ -1,0 +1,16 @@
+VPBUS_GPMC_VERSION = 0.1
+VPBUS_GPMC_SITE = $(BR2_EXTERNAL)/package/vpbus_gpmc
+VPBUS_GPMC_SITE_METHOD = local
+VPBUS_GPMC_LICENSE = GPLv3+
+
+VPBUS_GPMC_DEPENDENCIES = linux
+
+define VPBUS_GPMC_BUILD_CMDS
+	$(MAKE) -C $(LINUX_DIR) $(LINUX_MAKE_FLAGS) M=$(@D)
+endef
+
+define VPBUS_GPMC_INSTALL_TARGET_CMDS
+	$(MAKE) -C $(LINUX_DIR) $(LINUX_MAKE_FLAGS) M=$(@D) modules_install
+endef
+
+$(eval $(generic-package))

@@ -4,4 +4,4 @@ am335x_control.h
 am335x_gpio.h
 vpbus.c
 vpbus.h
-vpbus.mk
+vpbus_gpmc.mk

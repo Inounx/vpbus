@@ -1,5 +1,5 @@
 # vpbus
-Virtu'Ailes parallel bus linux kernel driver.
+Virtu'Ailes parallel bus linux kernel driver using GPMC.
 
 To add vpbus to your builroot:
 - With a console go to the buildroot packages dir (usually buildroot/package)
