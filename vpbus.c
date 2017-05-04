@@ -6,8 +6,8 @@
 
 #include "vpbus.h"
 #include <linux/types.h>
-#include "am335x_gpio.h"
-#include "am335x_control.h"
+#include <linux/cdev.h>
+
 #include <linux/sched.h>	/* For current */
 #include <linux/tty.h>		/* For the tty declarations */
 #include <linux/version.h>	/* For LINUX_VERSION_CODE */
@@ -17,9 +17,8 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/string.h>
-#include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/gpio.h>
+
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Marc Laval");
@@ -29,21 +28,22 @@ MODULE_DESCRIPTION("VirtuAiles Parallel bus driver");
 //                              Définitions
 //================================================================================
 
-#define DRIVER_NAME "vpbus"
-#define DEVICE_NAME DRIVER_NAME
-
-typedef enum
-{
-    BusRead,
-    BusWrite
-} BusDirectivity;
-
 typedef enum
 {
     SeekFromStart = 0,
     SeekFromCurrentPos = 1,
     SeekFromEnd = 2
 } SeekFrom;
+
+//On indique à linux que tout les périph compatibles avec "vpbus" sont gérés par
+//ce driver
+//Note MLa: je ne suis pas certain qu'avec un build out of tree ce soit utile...
+static const struct of_device_id driver_of_match[] = {
+    { .compatible = DEVICE_NAME, },
+    { },
+};
+
+MODULE_DEVICE_TABLE(of, driver_of_match);
 
 //================================================================================
 //                         Déclaration des fonctions
@@ -69,8 +69,9 @@ static uint16_t read_bus(uint16_t address);
 static void write_bus(uint16_t address, uint16_t data);
 
 
-struct file_operations fops =
+struct file_operations vpbus_fops =
 {
+    .owner = THIS_MODULE,
     .read = device_read,
     .write = device_write,
     .unlocked_ioctl = device_ioctl,
@@ -89,30 +90,15 @@ module_exit(vpbus_exit);
    Simple question de facilité pour la lecture du code d'exemple.
    À éviter au maximum en vrai.
  */
-static int major;
-struct device *dev;
-static struct class *class;
-static dev_t devt;
-static int device_is_opened = 0;
-
-volatile void * gpio0;
-volatile void * gpio1;
-volatile void * gpio2;
-volatile void * gpio3;
-volatile void * control;
-
-static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
-                                                (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15
-
-static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.30
-                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.31
-                                       (0xFuL << A0_PIN_INDEX)   | //A(0-3) sur P0.2 à P0.5
-                                       (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15;
-
-struct
+static struct
 {
-    uint16_t currentAddress;
-    BusDirectivity directivity;
+    int major;
+    device* dev;
+    struct class* class;
+    dev_t devt;
+    struct cdev cdev;
+
+    uint8_t is_opened;
 } vpbus;
 
 //================================================================================
@@ -125,85 +111,44 @@ struct
 static int __init vpbus_init(void)
 {
     int status;
+    int result;
 
-    printk(KERN_INFO "[VPBUS] Initializing (!) ...\n");
+    printk(KERN_INFO "[%s] Initializing ...\n", DEVICE_NAME);
 
-//    if(request_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO0\n",
-//               DEVICE_NAME);
+    //Demander l'allocation d'un chrdev avec mineur start = 0, count = 1, pour DEVICE_NAME
+    result = alloc_chrdev_region(&vpbus.devt, 0, 1, DEVICE_NAME);
+    vpbus.major = MAJOR(dev)
 
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO1\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO2\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO3\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for control module\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-    //mapping memoire des block de registre GPIO
-    //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
-    gpio0 = ioremap_nocache(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-    gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-    control = ioremap_nocache(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
-
-    major = register_chrdev(0, DRIVER_NAME, &fops);
-    if(major < 0)
+    if(result < 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed registering chrdev!\n");
-        return major;
+        printk(KERN_ERR "[%s] Failed registering chrdev! \n", DEVICE_NAME);
+        return vpbus.major;
     }
 
-    class = class_create(THIS_MODULE, DRIVER_NAME);
-    if(IS_ERR(class))
+    vpbus.class = class_create(THIS_MODULE, DEVICE_NAME);
+    if(IS_ERR(vpbus.class))
     {
-        printk(KERN_ERR "[VPBUS] Failed to create class!\n");
-        status = PTR_ERR(class);
+        printk(KERN_ERR "[%s] Failed to create class!\n", DEVICE_NAME);
+        status = PTR_ERR(vpbus.class);
         goto errorClass;
     }
 
-    devt = MKDEV(major, 0);
-    dev = device_create(class, NULL, devt, NULL, DRIVER_NAME);
-    status = IS_ERR(dev) ? PTR_ERR(dev) : 0;
+    vpbus.dev = device_create(vpbus.class, NULL, vpbus.devt, NULL, DEVICE_NAME);
+    status = IS_ERR(vpbus.dev) ? PTR_ERR(vpbus.dev) : 0;
 
     if(status != 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed to create device\n");
+        printk(KERN_ERR "[%s] Failed to create device\n", DEVICE_NAME);
         goto error;
+    }
+
+    cdev_init(&vpbus.cdev, &vpbus_fops);
+    vpbus.cdev.owner = THIS_MODULE;
+    vpbus.cdev.ops = &vpbus_fops;
+    result = cdev_add(&vpbus.cdev, vpbus.devt, 1);
+    if (result < 0)
+    {
+        printk(KERN_ERR "[%s] Failed to add c device\n", DEVICE_NAME);
     }
 
     return 0;
@@ -211,7 +156,7 @@ static int __init vpbus_init(void)
 error:
     class_destroy(class);
 errorClass:
-    unregister_chrdev(major, DRIVER_NAME);
+    unregister_chrdev_region(vpbus.devt, 1);
     return status;
 }
 
@@ -220,22 +165,11 @@ errorClass:
  */
 static void __exit vpbus_exit(void)
 {
-    iounmap(gpio0);
-    iounmap(gpio1);
-    iounmap(gpio2);
-    iounmap(gpio3);
-    iounmap(control);
-
-//    release_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
-
-    device_destroy(class, devt);
-    class_destroy(class);
-    unregister_chrdev(major, DRIVER_NAME);
-    printk(KERN_INFO "[VPBUS] Unloading module\n");
+    device_destroy(vpbus.class, vpbus.devt);
+    cdev_del(&vpbus.cdev);
+    class_destroy(vpbus.class);
+    unregister_chrdev_region(vpbus.devt, 1);
+    printk(KERN_INFO "[%s] Module unloaded\n", DEVICE_NAME);
 }
 
 //----------------------------------------------------------------------
