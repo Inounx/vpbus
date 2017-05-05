@@ -7,6 +7,10 @@
 #ifndef VPBUS_H
 #define VPBUS_H
 
+//Option de profilage du bus
+//Affiche à chaque accès le temps et la bande passante
+#define PROFILE
+
 
 //======================================================================
 //Définitions non modifiables
@@ -15,8 +19,6 @@
 #define BUS_BASE_ADDRESS 0x01000000
 #define BUS_SIZE (65536*2)
 #define MAX_ADDRESS (BUS_SIZE - 2)
-
-#define MAX_DMA_TRANSFER_IN_BYTES   (32768)
 
 #define DEVICE_NAME "vpbus"
 

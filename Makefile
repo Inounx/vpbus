@@ -1,4 +1,4 @@
-obj-m := vpbus_gpmc.o
+obj-m := vpbus.o dma.o
 
 SRC := $(shell pwd)
 
