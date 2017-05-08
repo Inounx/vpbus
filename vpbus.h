@@ -11,6 +11,8 @@
 //Affiche à chaque accès le temps et la bande passante
 #define PROFILE
 
+//A activer pour n'autoriser que les accès alignés sur le bus
+#define WORD_ADDRESSING_ONLY
 
 //======================================================================
 //Définitions non modifiables

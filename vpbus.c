@@ -251,74 +251,73 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
 {
     unsigned short int transfer_size;
     ssize_t transferred = 0;
-    unsigned long src_addr, trgt_addr;
+    unsigned long relative_src_addr, dest_addr;
 
-    struct drvr_mem * mem_to_read = &(((struct drvr_device *) filp->private_data)->data);
-
-    #ifdef USE_WORD_ADDRESSING
-        if (count % 2 != 0) {
-            DBG_LOG("read: Transfer must be 16bits aligned\n");
-
-            return -EFAULT;
-        }
+    #ifdef WORD_ADDRESSING_ONLY
+    if ((f->f_pos & 0x01) || (size & 0x01))
+    {
+        printk(KERN_ERR "[%s] : Read transfer must be 16bits aligned ! \n", DEVICE_NAME);
+        return -EFAULT;
+    }
     #endif
 
-        if (count < MAX_DMA_TRANSFER_IN_BYTES)
+    //Note MLa: ajouter check pour ne pas déborder de la taille du bus ?
+
+    if(size < MAX_DMA_TRANSFER_IN_BYTES)
+    {
+        transfer_size = size;
+    } else
+    {
+        transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
+    }
+
+    relative_src_addr = f->f_pos;
+    dest_addr = (unsigned long) vpbus.dma.buffer;
+
+    while(transferred < size)
+    {
+        #ifdef PROFILE
+        start_profile();
+        #endif
+
+        if(transfer_size <= 256)
         {
-            transfer_size = count;
+            memcpy(vpbus.dma.buffer, (void*) vpbus.bus_base_address + relative_src_addr, transfer_size);
+        }
+        else
+        {
+            int res = dma_copy(vpbus.dma, dest_addr, BUS_BASE_ADDRESS + relative_src_addr, transfer_size);
+
+            if (res < 0)
+            {
+                printk(KERN_INFO "[%s] read: Failed to trigger EDMA transfer\n", DEVICE_NAME);
+                return res;
+            }
+        }
+
+        if (copy_to_user(&data[transferred], vpbus.dma.buffer, transfer_size))
+        {
+            return -EFAULT;
+        }
+
+        #ifdef PROFILE
+        stop_profile();
+        compute_bandwidth(transfer_size);
+        #endif
+
+        relative_src_addr += transfer_size;
+        transferred += transfer_size;
+
+        if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
+        {
+            transfer_size = (count - transferred);
         } else
         {
             transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
         }
+    }
 
-    #ifdef USE_WORD_ADDRESSING
-        src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos) / 2]);
-    #else
-        src_addr = (unsigned long) &(mem_to_read->base_addr[(*f_pos)]);
-    #endif
-
-        trgt_addr = (unsigned long) dmaphysbuf;
-
-        while (transferred < count) {
-
-    #ifdef PROFILE
-            DBG_LOG("Read\n");
-            start_profile();
-    #endif
-
-            if(transfer_size <= 256) {
-                memcpy(mem_to_read->dma.buf, (void *) &(mem_to_read->virt_addr[(*f_pos)+transferred/2]), transfer_size);
-            }
-            else {
-                int res = logi_dma_copy(mem_to_read, trgt_addr, src_addr, transfer_size);
-
-                if (res < 0) {
-                    DBG_LOG("read: Failed to trigger EDMA transfer\n");
-
-                    return res;
-                }
-            }
-
-            if (copy_to_user(&buf[transferred], mem_to_read->dma.buf, transfer_size)) {
-                return -EFAULT;
-            }
-
-    #ifdef PROFILE
-            stop_profile();
-            compute_bandwidth(transfer_size);
-    #endif
-
-            src_addr += transfer_size;
-            transferred += transfer_size;
-
-            if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
-                transfer_size = (count - transferred);
-            } else {
-                transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
-            }
-        }
-
-        return transferred;
+    return transferred;
 }
 
 //----------------------------------------------------------------------
@@ -333,73 +332,68 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
 {
     unsigned short int transfer_size;
     ssize_t transferred = 0;
-    unsigned long src_addr, trgt_addr;
-    struct drvr_mem * mem_to_write = &(((struct drvr_device *) filp->private_data)->data);
+    unsigned long src_addr, relative_dest_addr;
 
-#ifdef USE_WORD_ADDRESSING
-    if (count % 2 != 0) {
-        DBG_LOG("write: Transfer must be 16bits aligned\n");
-
+    #ifdef WORD_ADDRESSING_ONLY
+    if ((f->f_pos & 0x01) || (size & 0x01))
+    {
+        printk(KERN_ERR "[%s] : Write transfer must be 16bits aligned ! \n", DEVICE_NAME);
         return -EFAULT;
     }
-#endif
+    #endif
 
-    if (count < MAX_DMA_TRANSFER_IN_BYTES) {
+    if (count < MAX_DMA_TRANSFER_IN_BYTES)
+    {
         transfer_size = count;
-    } else {
+    } else
+    {
         transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
     }
 
-#ifdef USE_WORD_ADDRESSING
-    trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos) / 2]);
-#else
-    trgt_addr = (unsigned long) &(mem_to_write->base_addr[(*f_pos)]);
-#endif
+    src_addr = (unsigned long) vpbus.dma.buffer;
+    relative_dest_addr = f->f_pos;
 
-    src_addr = (unsigned long) dmaphysbuf;
-
-    if (copy_from_user(mem_to_write->dma.buf, buf, transfer_size)) {
-        return -EFAULT;
-    }
-
-    if(transfer_size <= 256){
-        memcpy((void *) &(mem_to_write->virt_addr[(*f_pos)]), mem_to_write->dma.buf,transfer_size);
-
-        return transfer_size ;
-    }
-
-    while (transferred < count) {
+    while (transferred < count)
+    {
         int res;
 
-#ifdef PROFILE
-        DBG_LOG("Write\n");
+        #ifdef PROFILE
         start_profile();
-#endif
+        #endif
 
-        res = logi_dma_copy(mem_to_write, trgt_addr, src_addr,
-                    transfer_size);
-        if (res < 0) {
-            DBG_LOG("write: Failed to trigger EDMA transfer\n");
-
-            return res;
+        if(copy_from_user(vpbus.dma.buffer, &data[transferred], transfer_size))
+        {
+            return -EFAULT;
         }
 
-#ifdef PROFILE
+        if(transfer_size <= 256)
+        {
+            memcpy((void *) vpbus.bus_base_address + relative_dest_addr, vpbus.dma.buffer, transfer_size);
+        }
+        else
+        {
+            res = dma_copy(vpbus.dma, BUS_BASE_ADDRESS + relative_dest_addr, src_addr, transfer_size);
+            if (res < 0)
+            {
+                DBG_LOG("write: Failed to trigger EDMA transfer\n");
+                return res;
+            }
+        }
+
+        #ifdef PROFILE
         stop_profile();
         compute_bandwidth(transfer_size);
-#endif
+        #endif
 
-        trgt_addr += transfer_size;
+        relative_dest_addr += transfer_size;
         transferred += transfer_size;
 
-        if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES) {
+        if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
+        {
             transfer_size = count - transferred;
-        } else {
+        } else
+        {
             transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
-        }
-
-        if (copy_from_user(mem_to_write->dma.buf, &buf[transferred], transfer_size)) {
-            return -EFAULT;
         }
     }
 
