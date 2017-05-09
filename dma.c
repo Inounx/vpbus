@@ -153,12 +153,11 @@ int dma_copy(dma_channel_t* dma_channel, unsigned long dest_addr, unsigned long 
     }
 
     dma_channel->result = 0u;
-    dma_channel->.done = 0;
     /* set the callback and submit the transaction */
     tx->callback = dma_callback;
     tx->callback_param = dma_channel;
-    cookie = dmaengine_submit(tx);
-    dma_async_issue_pending(chan);
+    dma_channel->cookie = dmaengine_submit(tx);
+    dma_async_issue_pending(dma_channel->chan);
 #else
     struct edmacc_param param_set;
 

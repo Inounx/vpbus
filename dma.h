@@ -25,7 +25,7 @@
 typedef struct
 {
     void * buffer;
-    dma_addr_t* physbuf;
+    dma_addr_t physbuf;
     volatile int result;
     struct completion completion;
 

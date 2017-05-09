@@ -18,6 +18,7 @@
 #include <linux/fs.h>
 #include <linux/string.h>
 #include <linux/uaccess.h>
+#include <linux/mod_devicetable.h>
 
 #include "dma.h"
 
@@ -70,9 +71,9 @@ static void deinit_bus(void);
 
 static struct timespec start_ts, end_ts;//profile timer
 
-static inline void start_profile();
-static inline void stop_profile();
-static inline void print_bandwidth(unsigned int nb_byte);
+static void start_profile(void );
+static void stop_profile(void);
+static void print_bandwidth(unsigned int nb_byte);
 
 #endif
 
@@ -99,7 +100,7 @@ module_exit(vpbus_exit);
 static struct
 {
     int major;
-    device* dev;
+    struct device* device;
     struct class* class;
     dev_t devt;
     struct cdev cdev;
@@ -127,7 +128,7 @@ static int __init vpbus_init(void)
 
     //Demander l'allocation d'un chrdev avec mineur start = 0, count = 1, pour DEVICE_NAME
     result = alloc_chrdev_region(&vpbus.devt, 0, 1, DEVICE_NAME);
-    vpbus.major = MAJOR(dev)
+    vpbus.major = MAJOR(vpbus.devt);
 
     if(result < 0)
     {
@@ -143,8 +144,8 @@ static int __init vpbus_init(void)
         goto errorClass;
     }
 
-    vpbus.dev = device_create(vpbus.class, NULL, vpbus.devt, NULL, DEVICE_NAME);
-    status = IS_ERR(vpbus.dev) ? PTR_ERR(vpbus.dev) : 0;
+    vpbus.device = device_create(vpbus.class, NULL, vpbus.devt, NULL, DEVICE_NAME);
+    status = IS_ERR(vpbus.device) ? PTR_ERR(vpbus.device) : 0;
 
     if(status != 0)
     {
@@ -168,7 +169,7 @@ static int __init vpbus_init(void)
     }
 
 error:
-    class_destroy(class);
+    class_destroy(vpbus.class);
 errorClass:
     unregister_chrdev_region(vpbus.devt, 1);
     return status;
@@ -286,7 +287,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
         }
         else
         {
-            int res = dma_copy(vpbus.dma, dest_addr, BUS_BASE_ADDRESS + relative_src_addr, transfer_size);
+            int res = dma_copy(&vpbus.dma, dest_addr, BUS_BASE_ADDRESS + relative_src_addr, transfer_size);
 
             if (res < 0)
             {
@@ -302,15 +303,15 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
 
         #ifdef PROFILE
         stop_profile();
-        compute_bandwidth(transfer_size);
+        print_bandwidth(transfer_size);
         #endif
 
         relative_src_addr += transfer_size;
         transferred += transfer_size;
 
-        if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
+        if ((size - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
         {
-            transfer_size = (count - transferred);
+            transfer_size = (size - transferred);
         } else
         {
             transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
@@ -342,9 +343,9 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
     }
     #endif
 
-    if (count < MAX_DMA_TRANSFER_IN_BYTES)
+    if (size < MAX_DMA_TRANSFER_IN_BYTES)
     {
-        transfer_size = count;
+        transfer_size = size;
     } else
     {
         transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
@@ -353,7 +354,7 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
     src_addr = (unsigned long) vpbus.dma.buffer;
     relative_dest_addr = f->f_pos;
 
-    while (transferred < count)
+    while (transferred < size)
     {
         int res;
 
@@ -372,25 +373,25 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
         }
         else
         {
-            res = dma_copy(vpbus.dma, BUS_BASE_ADDRESS + relative_dest_addr, src_addr, transfer_size);
+            res = dma_copy(&vpbus.dma, BUS_BASE_ADDRESS + relative_dest_addr, src_addr, transfer_size);
             if (res < 0)
             {
-                DBG_LOG("write: Failed to trigger EDMA transfer\n");
+                printk(KERN_INFO "write: Failed to trigger EDMA transfer\n");
                 return res;
             }
         }
 
         #ifdef PROFILE
         stop_profile();
-        compute_bandwidth(transfer_size);
+        print_bandwidth(transfer_size);
         #endif
 
         relative_dest_addr += transfer_size;
         transferred += transfer_size;
 
-        if ((count - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
+        if ((size - transferred) < MAX_DMA_TRANSFER_IN_BYTES)
         {
-            transfer_size = count - transferred;
+            transfer_size = size - transferred;
         } else
         {
             transfer_size = MAX_DMA_TRANSFER_IN_BYTES;
@@ -438,7 +439,7 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
             return f->f_pos;
     }
 
-    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, vpbus.currentAddress);
+    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
 
     f->f_pos = newAddress;
     return f->f_pos;
@@ -462,10 +463,11 @@ static int init_bus(void)
     if(vpbus.bus_base_address == NULL)
     {
         printk(KERN_INFO "[%s] Failed to remap I/O memory region ! \n", DEVICE_NAME);
+        release_mem_region(BUS_BASE_ADDRESS, BUS_SIZE);
         return -ENOMEM;
     }
 
-    result = dma_open(vpbus.dma);
+    result = dma_open(&vpbus.dma);
 
     return result;
 }
@@ -475,7 +477,9 @@ static int init_bus(void)
  */
 static void deinit_bus(void)
 {
-    dma_release(vpbus.dma);
+    iounmap(vpbus.bus_base_address);
+    release_mem_region(BUS_BASE_ADDRESS, BUS_SIZE);
+    dma_release(&vpbus.dma);
 }
 
 #ifdef PROFILE
@@ -501,8 +505,10 @@ static void stop_profile()
 static void print_bandwidth(const unsigned int nb_byte)
 {
     struct timespec dt = timespec_sub(end_ts, start_ts);
-    double elapsed_us_time = dt.tv_sec * 1000000 + dt.tv_nsec / 1000;
+    uint32_t elapsed_us_time = dt.tv_sec * 1000000 + dt.tv_nsec / 1000;
 
-    printk("[%s] %d bytes in %f us => %f kBytes/s", DEVICE_NAME, nb_byte, elapsed_ms_time, 1000000*(nb_byte>>10)/elapsed_us_time)
+    printk(KERN_INFO "[%s] %d bytes in %d us => %d kBytes/s", DEVICE_NAME, nb_byte, elapsed_us_time, 1000000*(nb_byte>>10)/elapsed_us_time);
 }
 #endif
+
+#include "dma.c"
