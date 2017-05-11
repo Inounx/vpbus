@@ -57,7 +57,7 @@ static void __exit vpbus_exit(void);
 //Fonctions d'interface chrdev
 static int device_open(struct inode* i, struct file *f);
 static int device_release(struct inode* i, struct file *f);
-static long device_ioctl(struct file*, unsigned int, unsigned long);
+//static long device_ioctl(struct file*, unsigned int, unsigned long);
 static int device_read(struct file* f, char __user *data, size_t size, loff_t *l);
 static int device_write(struct file* f, const char __user *data, size_t size, loff_t *l);
 static loff_t device_seek(struct file* f, loff_t offset, int from);
@@ -82,7 +82,7 @@ struct file_operations vpbus_fops =
     .owner = THIS_MODULE,
     .read = device_read,
     .write = device_write,
-    .unlocked_ioctl = device_ioctl,
+    //.unlocked_ioctl = device_ioctl,
     .open = device_open,
     .release = device_release,
     .llseek = device_seek
@@ -236,11 +236,11 @@ static int device_release(struct inode *i, struct file *f)
 /*! \brief Cette fonction est appelée quand l'utilisateur effectue un ioctl sur notre
  * fichier.
  */
-static long device_ioctl (struct file *f, unsigned int cmd, unsigned long arg)
-{
-    printk(KERN_INFO "[%s] ioctl not implemented !\n", DEVICE_NAME);
-    return 0;
-}
+//static long device_ioctl (struct file *f, unsigned int cmd, unsigned long arg)
+//{
+//    printk(KERN_INFO "[%s] ioctl not implemented !\n", DEVICE_NAME);
+//    return 0;
+//}
 
 //----------------------------------------------------------------------
 /*! \brief Cette fonction est appelée quand l'utilisateur effectue une lecture sur notre
@@ -262,6 +262,11 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
         return -EFAULT;
     }
     #endif
+
+    if(f->f_pos + size > BUS_SIZE)
+    {
+        size = BUS_SIZE - f->f_pos;
+    }
 
     //Note MLa: ajouter check pour ne pas déborder de la taille du bus ?
 
@@ -343,6 +348,11 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
         return -EFAULT;
     }
     #endif
+
+    if(f->f_pos + size > BUS_SIZE)
+    {
+        size = BUS_SIZE - f->f_pos;
+    }
 
     if (size < MAX_DMA_TRANSFER_IN_BYTES)
     {
