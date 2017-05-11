@@ -258,7 +258,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     #ifdef WORD_ADDRESSING_ONLY
     if ((f->f_pos & 0x01) || (size & 0x01))
     {
-        printk(KERN_ERR "[%s] : Read transfer must be 16bits aligned ! \n", DEVICE_NAME);
+        printk(KERN_ERR "[%s] Read transfer must be 16bits aligned ! \n", DEVICE_NAME);
         return -EFAULT;
     }
     #endif
@@ -267,8 +267,6 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     {
         size = BUS_SIZE - f->f_pos;
     }
-
-    //Note MLa: ajouter check pour ne pas déborder de la taille du bus ?
 
     if(size < MAX_DMA_TRANSFER_IN_BYTES)
     {
