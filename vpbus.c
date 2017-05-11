@@ -448,7 +448,7 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
             return f->f_pos;
     }
 
-    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
+//    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
 
     f->f_pos = newAddress;
     return f->f_pos;
