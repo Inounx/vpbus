@@ -79,6 +79,7 @@ static void print_bandwidth(unsigned int nb_byte);
 
 struct file_operations vpbus_fops =
 {
+    .owner = THIS_MODULE,
     .read = device_read,
     .write = device_write,
     .unlocked_ioctl = device_ioctl,
