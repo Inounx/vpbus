@@ -42,47 +42,4 @@
 #define GPIO_CLEARDATAOUT       0x190
 #define GPIO_SETDATAOUT         0x194
 
-
-//Definition structure d'un bloc de registre de controle GPIO
-//struct am335x_gpio
-//{
-//    uint32_t revision;
-//    uint32_t reserved1[3];
-//    uint32_t sysconfig;
-//    uint32_t reserved2[3];
-//    uint32_t eoi;
-//    uint32_t irq_status_raw_0;
-//    uint32_t irq_status_raw_1;
-//    uint32_t irq_status_0;
-//    uint32_t irq_status_1;
-//    uint32_t irq_status_set_0;
-//    uint32_t irq_status_set_1;
-//    uint32_t irq_status_clr_0;
-//    uint32_t irq_status_clr_1;
-//    uint32_t irq_waken_0;
-//    uint32_t irq_waken_1;
-//    uint32_t reserved3[50];
-//    uint32_t sys_status;
-//    uint32_t reserved4[6];
-//    uint32_t ctrl;
-//    uint32_t oe;
-//    uint32_t data_in;
-//    uint32_t data_out;
-//    uint32_t level_detect_0;
-//    uint32_t level_detect_1;
-//    uint32_t rising_detect;
-//    uint32_t falling_detect;
-//    uint32_t debounce_enable;
-//    uint32_t debouncing_time;
-//    uint32_t reserved5[14];
-//    uint32_t clear_data_out;
-//    uint32_t set_data_out;
-//};
-
-////Accesseurs aux blocs GPIO
-//volatile am335x_gpio* gpio0 = (am335x_gpio*) GPIO0_BASE;
-//volatile am335x_gpio* gpio1 = (am335x_gpio*) GPIO1_BASE;
-//volatile am335x_gpio* gpio2 = (am335x_gpio*) GPIO2_BASE;
-//volatile am335x_gpio* gpio3 = (am335x_gpio*) GPIO3_BASE;
-
 #endif

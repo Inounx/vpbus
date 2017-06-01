@@ -7,91 +7,60 @@
 #ifndef VPBUS_H
 #define VPBUS_H
 
-//======================================================================
-//Définitions modifiables en fonction du bus souhaité
+//Option de profilage du bus
+//Affiche à chaque accès le temps et la bande passante
+//#define PROFILE
 
-//Attention dans les bits "utiles" on ne compte pas le bit 0 qui est "virtuel"
-//il n'apparait pas sur le bus, c'est juste qu'on adresse des mots de 16bits
-//donc on accède aux mots par des adresses paires dons le bit 0 est toujours à 0
-//Le nombre de bits utiles détermine seulement le nombre de mots adressables
-//Pour le ramener à l'octet il faut logiquement multiplier par 2
-//***Exemple pour 8bits :
-// - Nbre de mots adressables : 256
-// - Addresse min: 0
-// - Addresse max: 0x1FE
-//***Exemple pour 4bits :
-// - Nbre de mots adressables : 16
-// - Addresse min: 0
-// - Addresse max: 0x1E
-#define USABLE_ADDRESS_BITS 8
+//A activer pour n'autoriser que les accès alignés sur le bus
+#define WORD_ADDRESSING_ONLY
 
 //======================================================================
 //Définitions non modifiables
-#define MAX_ADDRESS_BITS 8
+#define BUS_SIZE (65536*2)
+#define MAX_ADDRESS (BUS_SIZE - 2)
 
-#if USABLE_ADDRESS_BITS > MAX_ADDRESS_BITS
-#error "USABLE_ADDRESS_BITS cannot be greter than MAX_ADDRESS_BITS!"
-#else
-#define MAX_BUS_ADDRESS ((1uL << (USABLE_ADDRESS_BITS + 1)) - 1)
-#endif
+//ALE P2.2
+//Read P2.3
+//Write P2.4
+#define ALE_PIN_INDEX 2
+#define READ_PIN_INDEX 3
+#define WRITE_PIN_INDEX 4
 
-//A0 P0.2
-//A1 P0.3
-//A2 P0.4
-//A3 P0.5
-//A4 P0.12
-//A5 P0.13
-//A6 P0.14
-//A7 P0.15
-#define A0_PIN_INDEX 2
-#define A1_PIN_INDEX 3
-#define A2_PIN_INDEX 4
-#define A3_PIN_INDEX 5
-#define A4_PIN_INDEX 12
-#define A5_PIN_INDEX 13
-#define A6_PIN_INDEX 14
-#define A7_PIN_INDEX 15
+//AD0 P1.12
+//AD1 P1.13
+//AD2 P1.14
+//AD3 P1.15
+//AD4 P1.16
+//AD5 P1.17
+//AD6 P1.18
+//AD7 P1.19
+//AD8 P3.14
+//AD9 P3.15
+//AD10 P3.16
+//AD11 P3.17
+//AD12 P3.18
+//AD13 P3.19
+//AD14 P3.20
+//AD15 P3.21
+#define AD0_PIN_INDEX 12
+#define AD1_PIN_INDEX 13
+#define AD2_PIN_INDEX 14
+#define AD3_PIN_INDEX 15
+#define AD4_PIN_INDEX 16
+#define AD5_PIN_INDEX 17
+#define AD6_PIN_INDEX 18
+#define AD7_PIN_INDEX 19
+#define GPIO1_AD_PIN_MASK (0xFFuL << AD0_PIN_INDEX)
 
-//Read P0.30
-//Write P0.31
-#define READ_PIN_INDEX 30
-#define WRITE_PIN_INDEX 31
-
-//D0 P1.12
-//D1 P1.13
-//D2 P1.14
-//D3 P1.15
-//D4 P1.16
-//D5 P1.17
-//D6 P1.18
-//D7 P1.19
-//D8 P3.14
-//D9 P3.15
-//D10 P3.16
-//D11 P3.17
-//D12 P3.18
-//D13 P3.19
-//D14 P3.20
-//D15 P3.21
-#define D0_PIN_INDEX 12
-#define D1_PIN_INDEX 13
-#define D2_PIN_INDEX 14
-#define D3_PIN_INDEX 15
-#define D4_PIN_INDEX 16
-#define D5_PIN_INDEX 17
-#define D6_PIN_INDEX 18
-#define D7_PIN_INDEX 19
-#define GPIO1_DATA_PIN_MASK (0xFFuL << D0_PIN_INDEX)
-
-#define D8_PIN_INDEX 14
-#define D9_PIN_INDEX 15
-#define D10_PIN_INDEX 16
-#define D11_PIN_INDEX 17
-#define D12_PIN_INDEX 18
-#define D13_PIN_INDEX 19
-#define D14_PIN_INDEX 20
-#define D15_PIN_INDEX 21
-#define GPIO3_DATA_PIN_MASK (0xFFuL << D8_PIN_INDEX)
+#define AD8_PIN_INDEX 14
+#define AD9_PIN_INDEX 15
+#define AD10_PIN_INDEX 16
+#define AD11_PIN_INDEX 17
+#define AD12_PIN_INDEX 18
+#define AD13_PIN_INDEX 19
+#define AD14_PIN_INDEX 20
+#define AD15_PIN_INDEX 21
+#define GPIO3_AD_PIN_MASK (0xFFuL << AD8_PIN_INDEX)
 
 
 #endif //VPBUS_H

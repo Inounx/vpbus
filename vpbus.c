@@ -64,16 +64,17 @@ static loff_t device_seek(struct file* f, loff_t offset, int from);
 static void init_bus(void);
 static void deinit_bus(void);
 static void set_bus_directivity(BusDirectivity dir);
-static void set_bus_address(uint16_t address);
+static void set_address_and_latch(uint16_t address);
 static uint16_t read_bus(uint16_t address);
-static void write_bus(uint16_t address, uint16_t data);
+static void write_bus(uint16_t data);
 
 
 struct file_operations fops =
 {
+    .owner = THIS_MODULE,
     .read = device_read,
     .write = device_write,
-    .unlocked_ioctl = device_ioctl,
+    //.unlocked_ioctl = device_ioctl,
     .open = device_open,
     .release = device_release,
     .llseek = device_seek
@@ -89,31 +90,28 @@ module_exit(vpbus_exit);
    Simple question de facilité pour la lecture du code d'exemple.
    À éviter au maximum en vrai.
  */
-static int major;
-struct device *dev;
-static struct class *class;
-static dev_t devt;
-static int device_is_opened = 0;
+static struct
+{
+    int major;
+    struct device* device;
+    struct class* class;
+    dev_t devt;
+    struct cdev cdev;
+    void* bus_base_address;
 
-volatile void * gpio0;
+    uint8_t is_opened;
+    BusDirectivity directivity;
+
+} vpbus;
+
 volatile void * gpio1;
 volatile void * gpio2;
 volatile void * gpio3;
-volatile void * control;
 
-static const uint32_t GPIO0_ADDRESS_PIN_MASK =  (0xFuL << A0_PIN_INDEX) | //A(0-3) sur P0.2 à P0.5
-                                                (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15
+static const uint32_t GPIO2_PIN_MASK = ((1uL << READ_PIN_INDEX)   | //Read
+                                       (1uL << WRITE_PIN_INDEX)   | //Write
+                                       (0x1uL << ALE_PIN_INDEX))    //ALE
 
-static const uint32_t GPIO0_PIN_MASK = (1uL << READ_PIN_INDEX)   | //Read P0.30
-                                       (1uL << WRITE_PIN_INDEX)  | //Write P0.31
-                                       (0xFuL << A0_PIN_INDEX)   | //A(0-3) sur P0.2 à P0.5
-                                       (0xFuL << A4_PIN_INDEX);  //A(4-7) sur P0.12 à P0.15;
-
-struct
-{
-    uint16_t currentAddress;
-    BusDirectivity directivity;
-} vpbus;
 
 //================================================================================
 //                              Fonctions
@@ -125,93 +123,59 @@ struct
 static int __init vpbus_init(void)
 {
     int status;
-
-    printk(KERN_INFO "[VPBUS] Initializing (!) ...\n");
-
-//    if(request_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO0\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO1\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO2\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for GPIO3\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
-
-//    if(request_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE, DEVICE_NAME) == NULL)
-//    {
-//        printk(KERN_ALERT
-//               "[%s] error: unable to obtain I/O memory address for control module\n",
-//               DEVICE_NAME);
-
-//        return -EBUSY;
-//    }
+    int result;
 
     //mapping memoire des block de registre GPIO
-    //MLa: Je suppose qu'il faut ici utiliser _nocache car on accède a des registres...
-    gpio0 = ioremap_nocache(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
     gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
     gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
     gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-    control = ioremap_nocache(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
 
-    major = register_chrdev(0, DRIVER_NAME, &fops);
-    if(major < 0)
+    //Demander l'allocation d'un chrdev avec mineur start = 0, count = 1, pour DEVICE_NAME
+    result = alloc_chrdev_region(&vpbus.devt, 0, 1, DEVICE_NAME);
+    vpbus.major = MAJOR(vpbus.devt);
+
+    if(result < 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed registering chrdev!\n");
-        return major;
+       printk(KERN_ERR "[%s] Failed registering chrdev! \n", DEVICE_NAME);
+       return vpbus.major;
     }
 
-    class = class_create(THIS_MODULE, DRIVER_NAME);
-    if(IS_ERR(class))
+    vpbus.class = class_create(THIS_MODULE, DEVICE_NAME);
+    if(IS_ERR(vpbus.class))
     {
-        printk(KERN_ERR "[VPBUS] Failed to create class!\n");
-        status = PTR_ERR(class);
-        goto errorClass;
+       printk(KERN_ERR "[%s] Failed to create class!\n", DEVICE_NAME);
+       status = PTR_ERR(vpbus.class);
+       goto errorClass;
     }
 
-    devt = MKDEV(major, 0);
-    dev = device_create(class, NULL, devt, NULL, DRIVER_NAME);
-    status = IS_ERR(dev) ? PTR_ERR(dev) : 0;
+    vpbus.device = device_create(vpbus.class, NULL, vpbus.devt, NULL, DEVICE_NAME);
+    status = IS_ERR(vpbus.device) ? PTR_ERR(vpbus.device) : 0;
 
     if(status != 0)
     {
-        printk(KERN_ERR "[VPBUS] Failed to create device\n");
-        goto error;
+       printk(KERN_ERR "[%s] Failed to create device\n", DEVICE_NAME);
+       goto error;
     }
 
-    return 0;
+    cdev_init(&vpbus.cdev, &vpbus_fops);
+    vpbus.cdev.owner = THIS_MODULE;
+    vpbus.cdev.ops = &vpbus_fops;
+    result = cdev_add(&vpbus.cdev, vpbus.devt, 1);
+    if (result < 0)
+    {
+       printk(KERN_ERR "[%s] Failed to add c device\n", DEVICE_NAME);
+       status = result;
+    }
+    else
+    {
+       printk(KERN_INFO "[%s] Init Ok\n", DEVICE_NAME);
+       return 0;
+    }
 
-error:
-    class_destroy(class);
-errorClass:
-    unregister_chrdev(major, DRIVER_NAME);
+    error:
+    class_destroy(vpbus.class);
+    errorClass:
+    unregister_chrdev_region(vpbus.devt, 1);
     return status;
 }
 
@@ -220,22 +184,15 @@ errorClass:
  */
 static void __exit vpbus_exit(void)
 {
-    iounmap(gpio0);
     iounmap(gpio1);
     iounmap(gpio2);
     iounmap(gpio3);
-    iounmap(control);
 
-//    release_mem_region(GPIO0_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
-//    release_mem_region(CONTROL_MODULE_BASE_ADDR, CONTROL_MODULE_BLOCK_SIZE);
-
-    device_destroy(class, devt);
-    class_destroy(class);
-    unregister_chrdev(major, DRIVER_NAME);
-    printk(KERN_INFO "[VPBUS] Unloading module\n");
+    device_destroy(vpbus.class, vpbus.devt);
+    cdev_del(&vpbus.cdev);
+    class_destroy(vpbus.class);
+    unregister_chrdev_region(vpbus.devt, 1);
+    printk(KERN_INFO "[%s] Exit\n", DEVICE_NAME);
 }
 
 //----------------------------------------------------------------------
@@ -243,20 +200,25 @@ static void __exit vpbus_exit(void)
  */
 static int device_open(struct inode *i, struct file *f)
 {
-    if(device_is_opened)
+    int result = 0;
+
+    if(vpbus.is_opened)
     {
-        //on n'autorise pas l'ouverture simultanée de ce périph
-        return -EBUSY;
+       //on n'autorise pas l'ouverture simultanée de ce périph
+       return -EBUSY;
     }
 
-    device_is_opened++;
+    vpbus.is_opened = 1;
 
-    printk(KERN_INFO "[VPBUS] Opening device\n");
+    printk(KERN_INFO "[%s] Opening device\n", DEVICE_NAME);
 
-    //incremente le compteur d'utilisation du module
-    //si ce compte n'est pas à 0, le kernel n'autorisera pas le rmmod
-    try_module_get(THIS_MODULE);
-    init_bus();
+    result = init_bus();
+    if(result >= 0)
+    {
+       //incremente le compteur d'utilisation du module
+       //si ce compte n'est pas à 0, le kernel n'autorisera pas le rmmod
+       try_module_get(THIS_MODULE);
+    }
 
     return 0;
 }
@@ -266,20 +228,14 @@ static int device_open(struct inode *i, struct file *f)
  */
 static int device_release(struct inode *i, struct file *f)
 {
-    printk(KERN_INFO "[VPBUS] Device release\n");
-    deinit_bus();
-    module_put(THIS_MODULE);
-    device_is_opened--;
-    return 0;
-}
+    printk(KERN_INFO "[%s] Device release\n", DEVICE_NAME);
+    if(vpbus.is_opened)
+    {
+       deinit_bus();
+       module_put(THIS_MODULE);
+    }
 
-//----------------------------------------------------------------------
-/*! \brief Cette fonction est appelée quand l'utilisateur effectue un ioctl sur notre
- * fichier.
- */
-static long device_ioctl (struct file *f, unsigned int cmd, unsigned long arg)
-{
-    //printk(KERN_INFO "[VPBUS] ioctl not implemented !\n");
+    vpbus.is_opened = 0;
     return 0;
 }
 
@@ -302,16 +258,13 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     uint16_t currentReadIndex = 0;
     uint16_t tempRead = 0;
 
-    printk(KERN_INFO "[VPBUS] Demande lecture de %d octets\n", size);
-
-    //Premier accès non aligné
-    if(vpbus.currentAddress & 0x01)
+    #ifdef WORD_ADDRESSING_ONLY
+    if ((f->f_pos & 0x01) || (size & 0x01))
     {
-        tempRead = read_bus(vpbus.currentAddress - 1);
-        tempData[currentReadIndex] = (tempRead >> 8);
-        currentReadIndex++;
-        vpbus.currentAddress++;
+       printk(KERN_ERR "[%s] Read transfer must be 16bits aligned ! \n", DEVICE_NAME);
+       return -EFAULT;
     }
+    #endif
 
     while(currentReadIndex < size-1)
     {
@@ -607,7 +560,7 @@ static uint16_t read_bus(uint16_t address)
 //----------------------------------------------------------------------
 /*! \brief Effectue une ecriture sur le bus
  */
-static void write_bus(uint16_t address, uint16_t data)
+static void write_bus(uint16_t data)
 {
     uint32_t gpio_set;
     uint32_t gpio_clr;
