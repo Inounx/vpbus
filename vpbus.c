@@ -7,7 +7,6 @@
 #include "vpbus.h"
 #include <linux/types.h>
 #include "am335x_gpio.h"
-#include "am335x_control.h"
 #include <linux/sched.h>	/* For current */
 #include <linux/tty.h>		/* For the tty declarations */
 #include <linux/version.h>	/* For LINUX_VERSION_CODE */
@@ -469,12 +468,14 @@ static void set_bus_directivity(BusDirectivity dir)
 }
 
 //----------------------------------------------------------------------
-/*! \brief Configure l'adresse courante sur le bus
+/*! \brief Ecrit une donnée sur le bus
 */
 static void write_data_on_bus(uint16_t value)
-{
+{                               
     uint32_t gpio_set;
     uint32_t gpio_clr;
+
+    set_bus_directivity(BusWrite);
 
     //poids faible
     gpio_set = ((uint32_t)(data & 0xFF) << AD0_PIN_INDEX);
@@ -490,11 +491,10 @@ static void write_data_on_bus(uint16_t value)
 }
 
 //----------------------------------------------------------------------
-/*! \brief Configure l'adresse courante sur le bus
+/*! \brief Ecrit l'adresse sur le bus et la valide
  */
 static void set_address_and_latch(uint16_t address)
 {
-    set_bus_directivity(BusWrite);
     write_data_on_bus(address);
 
     //Activation du ALE
@@ -533,7 +533,6 @@ static uint16_t read_bus()
  */
 static void write_bus(uint16_t data)
 {
-    set_bus_directivity(BusWrite);
     write_data_on_bus(data);
 
     //Activation du write
@@ -542,5 +541,3 @@ static void write_bus(uint16_t data)
     //Désactivation du write
     iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 }
-
-
