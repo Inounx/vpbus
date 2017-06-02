@@ -54,7 +54,7 @@ static void __exit vpbus_exit(void);
 //Fonctions d'interface chrdev
 static int device_open(struct inode* i, struct file *f);
 static int device_release(struct inode* i, struct file *f);
-static long device_ioctl(struct file*, unsigned int, unsigned long);
+//static long device_ioctl(struct file*, unsigned int, unsigned long);
 static int device_read(struct file* f, char __user *data, size_t size, loff_t *l);
 static int device_write(struct file* f, const char __user *data, size_t size, loff_t *l);
 static loff_t device_seek(struct file* f, loff_t offset, int from);
@@ -64,12 +64,12 @@ static void init_bus(void);
 static void deinit_bus(void);
 static void set_bus_directivity(BusDirectivity dir);
 static void set_address_and_latch(uint16_t address);
-static uint16_t read_bus();
+static uint16_t read_bus(void);
 static void write_bus(uint16_t data);
-static void write_data_on_bus(uint16_t value);
+static void write_data_on_bus(uint16_t data);
 
 
-struct file_operations fops =
+struct file_operations vpbus_fops =
 {
     .owner = THIS_MODULE,
     .read = device_read,
@@ -110,7 +110,7 @@ volatile void * gpio3;
 
 static const uint32_t GPIO2_PIN_MASK = ((1uL << READ_PIN_INDEX)   | //Read
                                        (1uL << WRITE_PIN_INDEX)   | //Write
-                                       (1uL << ALE_PIN_INDEX))      //ALE
+                                       (1uL << ALE_PIN_INDEX));     //ALE
 
 
 //================================================================================
@@ -200,8 +200,6 @@ static void __exit vpbus_exit(void)
  */
 static int device_open(struct inode *i, struct file *f)
 {
-    int result = 0;
-
     if(vpbus.is_opened)
     {
        //on n'autorise pas l'ouverture simultanée de ce périph
@@ -212,13 +210,10 @@ static int device_open(struct inode *i, struct file *f)
 
     printk(KERN_INFO "[%s] Opening device\n", DEVICE_NAME);
 
-    result = init_bus();
-    if(result >= 0)
-    {
-       //incremente le compteur d'utilisation du module
-       //si ce compte n'est pas à 0, le kernel n'autorisera pas le rmmod
-       try_module_get(THIS_MODULE);
-    }
+    init_bus();
+    //incremente le compteur d'utilisation du module
+    //si ce compte n'est pas à 0, le kernel n'autorisera pas le rmmod
+    try_module_get(THIS_MODULE);
 
     return 0;
 }
@@ -254,7 +249,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t* o
     //le périphérique à faire un accès non aligné (en réalité on fait un accès aligné dont on ne garde qu'une partie)
 
     //Allocation mémoire pour la lecture
-    char * tempData = NULL
+    char * tempData = NULL;
     uint16_t currentReadIndex = 0;
     uint16_t tempRead = 0;
 
@@ -432,7 +427,7 @@ static void set_bus_directivity(BusDirectivity dir)
     uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
-        printk(KERN_INFO "[%s] Set bus directivity at %d \n", dir);
+        printk(KERN_INFO "[%s] Set bus directivity at %d \n", DEVICE_NAME, dir);
         vpbus.directivity = dir;
 
         //Selection des bits à commuter dans les registres OE
@@ -470,7 +465,7 @@ static void set_bus_directivity(BusDirectivity dir)
 //----------------------------------------------------------------------
 /*! \brief Ecrit une donnée sur le bus
 */
-static void write_data_on_bus(uint16_t value)
+static void write_data_on_bus(uint16_t data)
 {                               
     uint32_t gpio_set;
     uint32_t gpio_clr;
@@ -479,13 +474,13 @@ static void write_data_on_bus(uint16_t value)
 
     //poids faible
     gpio_set = ((uint32_t)(data & 0xFF) << AD0_PIN_INDEX);
-    gpio_clr = (~gpio_set & GPIO1_DATA_PIN_MASK);
+    gpio_clr = (~gpio_set & GPIO1_AD_PIN_MASK);
     iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
     iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
 
     //poids fort
     gpio_set = ((uint32_t)(data & 0xFF00) << (AD8_PIN_INDEX - 8));
-    gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
+    gpio_clr = (~gpio_set & GPIO3_AD_PIN_MASK);
     iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
     iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
 }
@@ -507,7 +502,7 @@ static void set_address_and_latch(uint16_t address)
 //----------------------------------------------------------------------
 /*! \brief Effectue une lecture sur le bus
  */
-static uint16_t read_bus()
+static uint16_t read_bus(void)
 {
     uint32_t gpio_in;
     uint16_t dataRead;
