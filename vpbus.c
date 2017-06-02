@@ -67,6 +67,7 @@ static void set_bus_directivity(BusDirectivity dir);
 static void set_address_and_latch(uint16_t address);
 static uint16_t read_bus();
 static void write_bus(uint16_t data);
+static void write_data_on_bus(uint16_t value);
 
 
 struct file_operations fops =
@@ -110,7 +111,7 @@ volatile void * gpio3;
 
 static const uint32_t GPIO2_PIN_MASK = ((1uL << READ_PIN_INDEX)   | //Read
                                        (1uL << WRITE_PIN_INDEX)   | //Write
-                                       (0x1uL << ALE_PIN_INDEX))    //ALE
+                                       (1uL << ALE_PIN_INDEX))      //ALE
 
 
 //================================================================================
@@ -322,7 +323,8 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
        size = BUS_SIZE - f->f_pos;
     }
 
-    set_address_and_latch(f->f_pos);
+    //On divise l'adresse par 2 pour passer de l'adressage à l'octet à l'adressage au mot.
+    set_address_and_latch(f->f_pos >> 1);
 
     while(currentWriteIndex < size-1)
     {
@@ -374,8 +376,6 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
             return f->f_pos;
     }
 
-//    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
-
     f->f_pos = newAddress;
     return f->f_pos;
 }
@@ -386,59 +386,22 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
 static void init_bus(void)
 {
     uint32_t gpio_oe = 0;
-    uint32_t pad_config = PAD_CONTROL_MUX_MODE_7 |
-                          PAD_CONTROL_PULL_DISABLE |
-                          PAD_CONTROL_RX_ACTIVE |
-                          PAD_CONTROL_SLEW_FAST;
+//    uint32_t pad_config = PAD_CONTROL_MUX_MODE_7 |
+//                          PAD_CONTROL_PULL_DISABLE |
+//                          PAD_CONTROL_RX_ACTIVE |
+//                          PAD_CONTROL_SLEW_FAST;
 
-    //Configuration du multiplexeur interne pour que les GPIO soient cablées
-    //sur les pates en sortie
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_SCLK);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_D0);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_D1);
-    iowrite32(pad_config, control + PAD_CONTROL_SPI0_CS0);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WAIT0);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_CTSn);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_RTSn);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_RXD);
-    iowrite32(pad_config, control + PAD_CONTROL_UART1_TXD);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_WPN);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD12);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD13);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD14);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_AD15);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A0);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A1);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A2);
-    iowrite32(pad_config, control + PAD_CONTROL_GPMC_A3);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_ACLKX);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_FSX);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AXR0);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AHCLKR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_ACLKR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_FSR);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AXR1);
-    iowrite32(pad_config, control + PAD_CONTROL_MCASP0_AHCLKX);
-
-    //Init read et write
-    //Init bus d'adresse
-
-    //Faut il une section critique ou autre chose du même genre ?
     //ATTENTION dans registre OE, bit à 1 = pin en entrée
 
     //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
-    iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio0 + GPIO_SETDATAOUT);
+    iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio2 + GPIO_SETDATAOUT);
 
     //Protection de la séquence Read-Modify-Write
     preempt_disable();
-    gpio_oe = ioread32(gpio0 + GPIO_OE);
-    gpio_oe &= ~GPIO0_PIN_MASK;
-    iowrite32(gpio_oe, gpio0 + GPIO_OE);
+    gpio_oe = ioread32(gpio2 + GPIO_OE);
+    gpio_oe &= ~GPIO2_PIN_MASK;
+    iowrite32(gpio_oe, gpio2 + GPIO_OE);
     preempt_enable();
-
-    //Init variables internes
-    vpbus.currentAddress = 0;
-    set_bus_address(vpbus.currentAddress);
 
     //init bus de données par défaut en lecture
     set_bus_directivity(BusRead);
@@ -452,9 +415,9 @@ static void deinit_bus(void)
     uint32_t gpio_oe = 0;
     //Protection de la séquence Read-Modify-Write
     preempt_disable();
-    gpio_oe = ioread32(gpio0 + GPIO_OE);
-    gpio_oe |= GPIO0_PIN_MASK;
-    iowrite32(gpio_oe, gpio0 + GPIO_OE);
+    gpio_oe = ioread32(gpio2 + GPIO_OE);
+    gpio_oe |= GPIO2_PIN_MASK;
+    iowrite32(gpio_oe, gpio2 + GPIO_OE);
     preempt_enable();
 
     //on remet toutes les pins en entrée
@@ -470,12 +433,12 @@ static void set_bus_directivity(BusDirectivity dir)
     uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
-        printk(KERN_INFO "[VPBUS] Set bus directivity at %d \n", dir);
+        printk(KERN_INFO "[%s] Set bus directivity at %d \n", dir);
         vpbus.directivity = dir;
 
         //Selection des bits à commuter dans les registres OE
-        gpio1_pins = (0xFFuL << D0_PIN_INDEX); //D0 à D7 sur P1.12 à P1.19
-        gpio3_pins = (0xFFuL << D8_PIN_INDEX); //D8 à D15 sur P1.14 à P1.21
+        gpio1_pins = (0xFFuL << AD0_PIN_INDEX); //AD0 à AD7 sur P1.12 à P1.19
+        gpio3_pins = (0xFFuL << AD8_PIN_INDEX); //AD8 à AD15 sur P3.14 à P3.21
 
         //Protection de la séquence Read-Modify-Write
         preempt_disable();
@@ -507,21 +470,38 @@ static void set_bus_directivity(BusDirectivity dir)
 
 //----------------------------------------------------------------------
 /*! \brief Configure l'adresse courante sur le bus
- */
-static void set_bus_address(uint16_t address)
+*/
+static void write_data_on_bus(uint16_t value)
 {
-    uint32_t gpio0_set;
-    uint32_t gpio0_clr;
+    uint32_t gpio_set;
+    uint32_t gpio_clr;
 
-    //on supprime le dernier bit pour passer de l'adressage en octets
-    //à l'adressage par mot de 16bits
-    address = address >> 1;
+    //poids faible
+    gpio_set = ((uint32_t)(data & 0xFF) << AD0_PIN_INDEX);
+    gpio_clr = (~gpio_set & GPIO1_DATA_PIN_MASK);
+    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
+    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
 
-    gpio0_set = ((address & 0x0F) << A0_PIN_INDEX) | ((address & 0xF0) << (A4_PIN_INDEX - 4));
-    gpio0_clr = (~gpio0_set & GPIO0_ADDRESS_PIN_MASK);
+    //poids fort
+    gpio_set = ((uint32_t)(data & 0xFF00) << (AD8_PIN_INDEX - 8));
+    gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
+    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
+    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+}
 
-    iowrite32(gpio0_set, gpio0 + GPIO_SETDATAOUT);
-    iowrite32(gpio0_clr, gpio0 + GPIO_CLEARDATAOUT);
+//----------------------------------------------------------------------
+/*! \brief Configure l'adresse courante sur le bus
+ */
+static void set_address_and_latch(uint16_t address)
+{
+    set_bus_directivity(BusWrite);
+    write_data_on_bus(address);
+
+    //Activation du ALE
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
+
+    //Désactivation du ALE
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 }
 
 //----------------------------------------------------------------------
@@ -534,16 +514,16 @@ static uint16_t read_bus()
     set_bus_directivity(BusRead);
 
     //Activation du read
-    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
 
     //Besoin d'ajouter une attente?
     gpio_in = ioread32(gpio1 + GPIO_DATAIN);
-    dataRead = (gpio_in >> D0_PIN_INDEX) & 0xFF;
+    dataRead = (gpio_in >> AD0_PIN_INDEX) & 0xFF;
     gpio_in = ioread32(gpio3 + GPIO_DATAIN);
-    dataRead |= (gpio_in >> (D8_PIN_INDEX - 8)) & 0xFF00;
+    dataRead |= (gpio_in >> (AD8_PIN_INDEX - 8)) & 0xFF00;
 
     //Désactivation du read
-    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+    iowrite32((uint32_t)(1uL << READ_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 
     return dataRead;
 }
@@ -553,30 +533,14 @@ static uint16_t read_bus()
  */
 static void write_bus(uint16_t data)
 {
-    uint32_t gpio_set;
-    uint32_t gpio_clr;
-
-    printk(KERN_INFO "[VPBUS] Write bus %d at %d \n", data, address);
-
     set_bus_directivity(BusWrite);
-
-    //poids faible
-    gpio_set = ((uint32_t)(data & 0xFF) << D0_PIN_INDEX);
-    gpio_clr = (~gpio_set & GPIO1_DATA_PIN_MASK);
-    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
-    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
-
-    //poids fort
-    gpio_set = ((uint32_t)(data & 0xFF00) << (D8_PIN_INDEX - 8));
-    gpio_clr = (~gpio_set & GPIO3_DATA_PIN_MASK);
-    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
-    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+    write_data_on_bus(data);
 
     //Activation du write
-    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_CLEARDATAOUT);
+    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
 
     //Désactivation du write
-    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio0 + GPIO_SETDATAOUT);
+    iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 }
 
 
