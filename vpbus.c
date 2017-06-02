@@ -65,7 +65,7 @@ static void init_bus(void);
 static void deinit_bus(void);
 static void set_bus_directivity(BusDirectivity dir);
 static void set_address_and_latch(uint16_t address);
-static uint16_t read_bus(uint16_t address);
+static uint16_t read_bus();
 static void write_bus(uint16_t data);
 
 
@@ -246,7 +246,7 @@ static int device_release(struct inode *i, struct file *f)
  * Elle reçoit un buffer à remplir et une taille demandée.
  * Elle doit remplir le buffer et retourner la taille effective.
  */
-static int device_read(struct file *f, char __user *data, size_t size, loff_t *l)
+static int device_read(struct file *f, char __user *data, size_t size, loff_t* off)
 {
     //on doit gérer le cas de la première lecture qui est peut être non alignée
     //tout comme la dernière peut l'être aussi.
@@ -254,7 +254,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     //le périphérique à faire un accès non aligné (en réalité on fait un accès aligné dont on ne garde qu'une partie)
 
     //Allocation mémoire pour la lecture
-    char * tempData = kmalloc(size, GFP_KERNEL);
+    char * tempData = NULL
     uint16_t currentReadIndex = 0;
     uint16_t tempRead = 0;
 
@@ -266,22 +266,22 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     }
     #endif
 
-    while(currentReadIndex < size-1)
+    //Vérification qu'on ne déborde pas de la plage d'adresse du bus
+    if(f->f_pos + size > BUS_SIZE)
     {
-        printk(KERN_INFO "[VPBUS] Read bus at %d\n", vpbus.currentAddress);
-        tempRead = read_bus(vpbus.currentAddress);
-        *(uint16_t*)(&tempData[currentReadIndex]) = tempRead;
-        vpbus.currentAddress += 2;
-        currentReadIndex += 2;
+       size = BUS_SIZE - f->f_pos;
     }
 
-    //dernier accès eventuellement non aligné
-    if(currentReadIndex+1 < size)
+    tempData = kmalloc(size, GFP_KERNEL);
+
+    set_address_and_latch(f->f_pos);
+
+    while(currentReadIndex <= size-1)
     {
-        tempRead = read_bus(vpbus.currentAddress);
-        tempData[currentReadIndex] = tempRead & 0xFF;
-        currentReadIndex++;
-        vpbus.currentAddress++;
+        tempRead = read_bus();
+        *(uint16_t*)(&tempData[currentReadIndex]) = tempRead;
+        *off += 2;
+        currentReadIndex += 2;
     }
 
     copy_to_user(tempData, data, size);
@@ -297,52 +297,43 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
  * Elle doit utiliser les données et retourner le nombre de données
  * effectivement utilisées.
 */
-static int device_write(struct file *f, const char __user *data, size_t size, loff_t *l)
+static int device_write(struct file *f, const char __user *data, size_t size, loff_t* off)
 {
     //Les premiers et dernier octets peuvent être des accès non alignés
     //Dans ce cas on ajoute un octet à 0 pour le rendre aligné
     //ce cas ne devrait pas arriver normalement
     //mais il faut le gérer au cas où
 
-    uint16_t sizeWritten = 0;
     uint16_t currentWriteIndex = 0;
     uint16_t tempWrite = 0;
     uint8_t * dataToWrite = kmalloc(size, GFP_KERNEL);
     copy_from_user(dataToWrite, data, size);
 
-    printk(KERN_INFO "[VPBUS] Demande ecriture de %d octets\n", size);
-
-    //Premier accès non aligné
-    if(vpbus.currentAddress & 0x01)
+    #ifdef WORD_ADDRESSING_ONLY
+    if ((f->f_pos & 0x01) || (size & 0x01))
     {
-        tempWrite = (uint16_t)dataToWrite[currentWriteIndex] << 8;
-        write_bus(vpbus.currentAddress - 1, tempWrite);
-        sizeWritten += 2;
-        currentWriteIndex++;
-        vpbus.currentAddress++;
+       printk(KERN_ERR "[%s] : Write transfer must be 16bits aligned ! \n", DEVICE_NAME);
+       return -EFAULT;
     }
+    #endif
+
+    if(f->f_pos + size > BUS_SIZE)
+    {
+       size = BUS_SIZE - f->f_pos;
+    }
+
+    set_address_and_latch(f->f_pos);
 
     while(currentWriteIndex < size-1)
     {
-        tempWrite = dataToWrite[currentWriteIndex] | ((uint16_t)dataToWrite[currentWriteIndex+1] << 8);
-        write_bus(vpbus.currentAddress, tempWrite);
-        sizeWritten += 2;
-        vpbus.currentAddress += 2;
-        currentWriteIndex += 2;
-    }
-
-    //dernier accès eventuellement non aligné
-    if(currentWriteIndex+1 < size)
-    {
-        tempWrite = dataToWrite[currentWriteIndex];
-        write_bus(vpbus.currentAddress, tempWrite);
-        sizeWritten += 2;
-        vpbus.currentAddress += 2;
+        tempWrite = *(uint16_t*)(&dataToWrite[currentWriteIndex]);
+        write_bus(tempWrite);
+        *off += 2;
         currentWriteIndex += 2;
     }
 
     kfree(dataToWrite);
-    return sizeWritten;
+    return currentWriteIndex;
 }
 
 //----------------------------------------------------------------------
@@ -355,24 +346,24 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
     {
         case SeekFromStart:
             newAddress = offset;
-            if(newAddress > MAX_BUS_ADDRESS)
+            if(newAddress > MAX_ADDRESS)
             {
-                newAddress = MAX_BUS_ADDRESS;
+                newAddress = MAX_ADDRESS;
             }
             break;
 
         case SeekFromCurrentPos:
-            newAddress = vpbus.currentAddress + offset;
-            if(newAddress > MAX_BUS_ADDRESS)
+            newAddress = f->f_pos + offset;
+            if(newAddress > MAX_ADDRESS)
             {
-                newAddress = MAX_BUS_ADDRESS;
+                newAddress = MAX_ADDRESS;
             }
             break;
 
         case SeekFromEnd:
-            if(offset < MAX_BUS_ADDRESS)
+            if(offset < MAX_ADDRESS)
             {
-                newAddress = MAX_BUS_ADDRESS - offset;
+                newAddress = MAX_ADDRESS - offset;
             }
             else
             {
@@ -380,13 +371,13 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
             }
 
         default:
-            return vpbus.currentAddress;
+            return f->f_pos;
     }
 
-    printk(KERN_INFO "[VPBUS] Set address at %d \n", vpbus.currentAddress);
+//    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
 
-    vpbus.currentAddress = newAddress;
-    return vpbus.currentAddress;
+    f->f_pos = newAddress;
+    return f->f_pos;
 }
 
 //----------------------------------------------------------------------
@@ -536,7 +527,7 @@ static void set_bus_address(uint16_t address)
 //----------------------------------------------------------------------
 /*! \brief Effectue une lecture sur le bus
  */
-static uint16_t read_bus(uint16_t address)
+static uint16_t read_bus()
 {
     uint32_t gpio_in;
     uint16_t dataRead;
