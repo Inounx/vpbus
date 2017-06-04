@@ -112,6 +112,13 @@ static const uint32_t GPIO2_PIN_MASK = ((1uL << READ_PIN_INDEX)   | //Read
                                        (1uL << WRITE_PIN_INDEX)   | //Write
                                        (1uL << ALE_PIN_INDEX));     //ALE
 
+//On réserve une patte de chaque block GPIO pour que les horloges soient actives
+//et qu'on puisse faire les accès via registres
+static struct gpio gpio_to_enable_block[] = {
+    {P1PIN, GPIOF_IN, "gpioP1"},
+    {P2PIN, GPIOF_IN, "gpioP2"},
+    {P3PIN, GPIOF_IN, "gpioP3"}};
+
 
 //================================================================================
 //                              Fonctions
@@ -124,11 +131,23 @@ static int __init vpbus_init(void)
 {
     int status;
     int result;
+    int i;
 
     //mapping memoire des block de registre GPIO
     gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
     gpio2 = ioremap_nocache(GPIO2_BASE_ADDR, GPIO_BLOCK_SIZE);
     gpio3 = ioremap_nocache(GPIO3_BASE_ADDR, GPIO_BLOCK_SIZE);
+
+    result = gpio_request_array(gpio_to_enable_block, ARRAY_SIZE(gpio_to_enable_block));
+    if(result == 0)
+    {
+        printk(KERN_INFO "GPIO reservation OK!");
+    }
+    else
+    {
+        printk(KERN_INFO "GPIO reservation fail %d !", result); 
+        return result;
+    }
 
     //Demander l'allocation d'un chrdev avec mineur start = 0, count = 1, pour DEVICE_NAME
     result = alloc_chrdev_region(&vpbus.devt, 0, 1, DEVICE_NAME);
@@ -176,6 +195,7 @@ static int __init vpbus_init(void)
     class_destroy(vpbus.class);
     errorClass:
     unregister_chrdev_region(vpbus.devt, 1);
+    gpio_free_array(gpio_to_enable_block, ARRAY_SIZE(gpio_to_enable_block));
     return status;
 }
 
@@ -184,14 +204,17 @@ static int __init vpbus_init(void)
  */
 static void __exit vpbus_exit(void)
 {
-    iounmap(gpio1);
-    iounmap(gpio2);
-    iounmap(gpio3);
-
     device_destroy(vpbus.class, vpbus.devt);
     cdev_del(&vpbus.cdev);
     class_destroy(vpbus.class);
     unregister_chrdev_region(vpbus.devt, 1);
+
+    iounmap(gpio1);
+    iounmap(gpio2);
+    iounmap(gpio3);
+
+    gpio_free_array(gpio_to_enable_block, ARRAY_SIZE(gpio_to_enable_block));
+
     printk(KERN_INFO "[%s] Exit\n", DEVICE_NAME);
 }
 
@@ -387,9 +410,11 @@ static void init_bus(void)
 
     //ATTENTION dans registre OE, bit à 1 = pin en entrée
 
+    printk(KERN_ERR "[%s] Init bus \n", DEVICE_NAME);
     //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
     iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio2 + GPIO_SETDATAOUT);
 
+    printk(KERN_ERR "[%s] Init bus R/W/ALE directivity \n", DEVICE_NAME);
     //Protection de la séquence Read-Modify-Write
     preempt_disable();
     gpio_oe = ioread32(gpio2 + GPIO_OE);
@@ -427,7 +452,7 @@ static void set_bus_directivity(BusDirectivity dir)
     uint32_t gpio_oe;
     if(vpbus.directivity != dir)
     {
-        printk(KERN_INFO "[%s] Set bus directivity at %d \n", DEVICE_NAME, dir);
+//        printk(KERN_INFO "[%s] Set bus directivity at %d \n", DEVICE_NAME, dir);
         vpbus.directivity = dir;
 
         //Selection des bits à commuter dans les registres OE
@@ -440,7 +465,7 @@ static void set_bus_directivity(BusDirectivity dir)
         gpio_oe = ioread32(gpio1 + GPIO_OE);
         if(dir == BusRead)
         {
-           gpio_oe |= gpio1_pins;
+            gpio_oe |= gpio1_pins;
         }
         else
         {

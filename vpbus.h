@@ -19,12 +19,16 @@
 #define BUS_SIZE (65536*2)
 #define MAX_ADDRESS (BUS_SIZE - 2)
 
+#define GPIO_ID(port, pin) (32 * port + pin)
+
 //ALE P2.2
 //Read P2.3
 //Write P2.4
 #define ALE_PIN_INDEX 2
 #define READ_PIN_INDEX 3
 #define WRITE_PIN_INDEX 4
+
+#define P2PIN GPIO_ID(2, ALE_PIN_INDEX)
 
 //AD0 P1.12
 //AD1 P1.13
@@ -51,6 +55,7 @@
 #define AD6_PIN_INDEX 18
 #define AD7_PIN_INDEX 19
 #define GPIO1_AD_PIN_MASK (0xFFuL << AD0_PIN_INDEX)
+#define P1PIN GPIO_ID(1, AD0_PIN_INDEX)
 
 #define AD8_PIN_INDEX 14
 #define AD9_PIN_INDEX 15
@@ -61,6 +66,7 @@
 #define AD14_PIN_INDEX 20
 #define AD15_PIN_INDEX 21
 #define GPIO3_AD_PIN_MASK (0xFFuL << AD8_PIN_INDEX)
+#define P3PIN GPIO_ID(3, AD8_PIN_INDEX)
 
 
 #endif //VPBUS_H
