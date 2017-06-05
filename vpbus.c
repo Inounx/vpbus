@@ -506,8 +506,8 @@ static void write_data_on_bus(uint16_t data)
     //poids fort
     gpio_set = ((uint32_t)(data & 0xFF00) << (AD8_PIN_INDEX - 8));
     gpio_clr = (~gpio_set & GPIO3_AD_PIN_MASK);
-    iowrite32(gpio_set, gpio1 + GPIO_SETDATAOUT);
-    iowrite32(gpio_clr, gpio1 + GPIO_CLEARDATAOUT);
+    iowrite32(gpio_set, gpio3 + GPIO_SETDATAOUT);
+    iowrite32(gpio_clr, gpio3 + GPIO_CLEARDATAOUT);
 }
 
 //----------------------------------------------------------------------
@@ -518,10 +518,10 @@ static void set_address_and_latch(uint16_t address)
     write_data_on_bus(address);
 
     //Activation du ALE
-    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 
     //Désactivation du ALE
-    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
 }
 
 //----------------------------------------------------------------------
