@@ -279,6 +279,8 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
     relative_src_addr = f->f_pos;
     dest_addr = (unsigned long) vpbus.dma.buffer;
 
+    printk(KERN_INFO "[%s] Read at address %d \n", DEVICE_NAME, (uint32_t)relative_src_addr);
+
     while(transferred < size)
     {
         #ifdef PROFILE
@@ -287,7 +289,7 @@ static int device_read(struct file *f, char __user *data, size_t size, loff_t *l
 
         if(transfer_size <= 256)
         {
-            memcpy(vpbus.dma.buffer, (void*) vpbus.bus_base_address + relative_src_addr, transfer_size);
+            memcpy(vpbus.dma.buffer, (void*) (vpbus.bus_base_address + relative_src_addr), transfer_size);
         }
         else
         {
@@ -362,6 +364,8 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
 
     src_addr = (unsigned long) vpbus.dma.buffer;
     relative_dest_addr = f->f_pos;
+
+    printk(KERN_INFO "[%s] Write at address %d \n", DEVICE_NAME, (uint32_t)relative_dest_addr);
 
     while (transferred < size)
     {
@@ -448,7 +452,7 @@ static loff_t device_seek(struct file* f, loff_t offset, int from)
             return f->f_pos;
     }
 
-//    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
+    printk(KERN_INFO "[%s] Set address at %d \n", DEVICE_NAME, (uint32_t)newAddress);
 
     f->f_pos = newAddress;
     return f->f_pos;
