@@ -131,7 +131,6 @@ static int __init vpbus_init(void)
 {
     int status;
     int result;
-    int i;
 
     //mapping memoire des block de registre GPIO
     gpio1 = ioremap_nocache(GPIO1_BASE_ADDR, GPIO_BLOCK_SIZE);
@@ -148,6 +147,9 @@ static int __init vpbus_init(void)
         printk(KERN_INFO "GPIO reservation fail %d !", result); 
         return result;
     }
+
+    //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
+    iowrite32(GPIO2_PIN_MASK, gpio2 + GPIO_SETDATAOUT);
 
     //Demander l'allocation d'un chrdev avec mineur start = 0, count = 1, pour DEVICE_NAME
     result = alloc_chrdev_region(&vpbus.devt, 0, 1, DEVICE_NAME);
@@ -342,7 +344,7 @@ static int device_write(struct file *f, const char __user *data, size_t size, lo
 
     //On divise l'adresse par 2 pour passer de l'adressage à l'octet à l'adressage au mot.
     set_address_and_latch(f->f_pos >> 1);
-
+    *off = f->f_pos;
     while(currentWriteIndex < size-1)
     {
         tempWrite = *(uint16_t*)(&dataToWrite[currentWriteIndex]);
@@ -412,17 +414,18 @@ static void init_bus(void)
 
     printk(KERN_ERR "[%s] Init bus \n", DEVICE_NAME);
     //On preconfigure READ et WRITE a l'état haut car c'est un signal inversé
-    iowrite32((uint32_t)((1uL << READ_PIN_INDEX) | (1uL << WRITE_PIN_INDEX)), gpio2 + GPIO_SETDATAOUT);
+    //iowrite32(GPIO2_PIN_MASK, gpio2 + GPIO_SETDATAOUT);
 
     printk(KERN_ERR "[%s] Init bus R/W/ALE directivity \n", DEVICE_NAME);
     //Protection de la séquence Read-Modify-Write
-    preempt_disable();
+    //preempt_disable();
     gpio_oe = ioread32(gpio2 + GPIO_OE);
     gpio_oe &= ~GPIO2_PIN_MASK;
     iowrite32(gpio_oe, gpio2 + GPIO_OE);
-    preempt_enable();
+    //preempt_enable();
 
     //init bus de données par défaut en lecture
+    printk(KERN_ERR "[%s] Init bus directivity \n", DEVICE_NAME);
     set_bus_directivity(BusRead);
 }
 
@@ -433,11 +436,11 @@ static void deinit_bus(void)
 {
     uint32_t gpio_oe = 0;
     //Protection de la séquence Read-Modify-Write
-    preempt_disable();
-    gpio_oe = ioread32(gpio2 + GPIO_OE);
-    gpio_oe |= GPIO2_PIN_MASK;
-    iowrite32(gpio_oe, gpio2 + GPIO_OE);
-    preempt_enable();
+    //preempt_disable();
+    //gpio_oe = ioread32(gpio2 + GPIO_OE);
+    //gpio_oe |= GPIO2_PIN_MASK;
+    //iowrite32(gpio_oe, gpio2 + GPIO_OE);
+    //preempt_enable();
 
     //on remet toutes les pins en entrée
     set_bus_directivity(BusRead);
@@ -460,7 +463,7 @@ static void set_bus_directivity(BusDirectivity dir)
         gpio3_pins = (0xFFuL << AD8_PIN_INDEX); //AD8 à AD15 sur P3.14 à P3.21
 
         //Protection de la séquence Read-Modify-Write
-        preempt_disable();
+        //preempt_disable();
         //ATTENTION dans registre OE, bit à 1 = pin en entrée
         gpio_oe = ioread32(gpio1 + GPIO_OE);
         if(dir == BusRead)
@@ -483,7 +486,7 @@ static void set_bus_directivity(BusDirectivity dir)
             gpio_oe &= ~gpio3_pins;
         }
         iowrite32(gpio_oe, gpio3 + GPIO_OE);
-        preempt_enable();
+        //preempt_enable();
     }
 }
 
@@ -494,6 +497,7 @@ static void write_data_on_bus(uint16_t data)
 {                               
     uint32_t gpio_set;
     uint32_t gpio_clr;
+    volatile int i = 0;
 
     set_bus_directivity(BusWrite);
 
@@ -508,6 +512,11 @@ static void write_data_on_bus(uint16_t data)
     gpio_clr = (~gpio_set & GPIO3_AD_PIN_MASK);
     iowrite32(gpio_set, gpio3 + GPIO_SETDATAOUT);
     iowrite32(gpio_clr, gpio3 + GPIO_CLEARDATAOUT);
+
+    for(i = 0; i < 2000; i++)
+    {
+        gpio_clr = i;
+    }
 }
 
 //----------------------------------------------------------------------
@@ -515,13 +524,13 @@ static void write_data_on_bus(uint16_t data)
  */
 static void set_address_and_latch(uint16_t address)
 {
+    //Activation du ALE
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
+
     write_data_on_bus(address);
 
-    //Activation du ALE
-    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
-
     //Désactivation du ALE
-    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
+    iowrite32((uint32_t)(1uL << ALE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 }
 
 //----------------------------------------------------------------------
@@ -553,11 +562,12 @@ static uint16_t read_bus(void)
  */
 static void write_bus(uint16_t data)
 {
-    write_data_on_bus(data);
-
     //Activation du write
     iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio2 + GPIO_CLEARDATAOUT);
+
+    write_data_on_bus(data);
 
     //Désactivation du write
     iowrite32((uint32_t)(1uL << WRITE_PIN_INDEX), gpio2 + GPIO_SETDATAOUT);
 }
+
